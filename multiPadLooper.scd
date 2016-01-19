@@ -106,12 +106,9 @@ launchPad = MIDIClient.sources.select({|elem| (elem.name == "Standalone Port")
 	&& (elem.device == "Launchpad Pro")})[0];
 [launchPad, MIDIClient.sources[2]].postln;
 a = {|vel, note, chan, port|
-	//["ON", vel, note, chan, port, pads.includes(note)].postln;
 	if(pads.includes(note), {
-		//["padInfo", padMap[note], padMap.at(note), padMap.keys().includes(note), pads.includes(note)].postln;
 		var padInfo = padMap[note];
 		var newNote = indToNote.(padInfo[0], padInfo[1]);
-		//[padInfo[1], newNote, vel].postln;
 		midiOut.noteOn(padInfo[1], newNote, vel);
 		if((recordingState == 2), {recordBuffer.add([tempoClock.beats, newNote, vel, padInfo[1], "on"])});
 	});
@@ -119,11 +116,9 @@ a = {|vel, note, chan, port|
 padOn = MIDIFunc.noteOn(a, nil, nil, launchPad.uid);
 
 b = {|vel, note, chan, port|
-	//["OFF", vel, note, chan, port].postln;
 	if(pads.includes(note), {
 		var padInfo = padMap[note];
 		var newNote = indToNote.(padInfo[0], padInfo[1]);
-		//[padInfo[1], newNote, vel].postln;
 		midiOut.noteOff(padInfo[1], newNote, vel);
 		if(recordingState == 2 , {recordBuffer.add([tempoClock.beats, newNote, vel, padInfo[1], "off"])});
 	});
@@ -137,15 +132,11 @@ createRecordedTask = {|oldRecBuf|
 	recBuf = List.newFrom(oldRecBuf);
 	startBeat = recBuf[0][0].floor;
 	timeAfterLastHit = (recBuf[recBuf.size-1][0].ceil - recBuf[recBuf.size-1][0]);
-	if(timeAfterLastHit > 1, {"TIME AFTER LAST HIT > 1".postln;});
-
 
 	//TODO: handle cases where multiple inst hits in a recBuf, or when there's no noteOns recorded
-	//MIDI NOTES ALL OFF
 	midiOut.allNotesOff(recBuf[0][3]);
 	hangingNotes = Dictionary.new();
 	recBuf.do({|elem|
-		recBuf.postln;
 		if(elem[4] == "on",
 			{hangingNotes.put(elem[1], elem)},
 			{hangingNotes.removeAt(elem[1])})
@@ -157,24 +148,18 @@ createRecordedTask = {|oldRecBuf|
 		recBuf.add(newHit);
 	});
 
-
 	(recBuf.size-1..1).do({|i| recBuf[i][0] = recBuf[i][0] - recBuf[i-1][0]});
 	recBuf[0][0] = recBuf[0][0] - startBeat;
-	[timeAfterLastHit, "TIME AFTER"].postln;
-	recBuf.do({|r| r[0].postln});
 
 	newTask = Task({
 		var ind = 0;
 		var hit;
 		var endWait = 0;
-		["TASK START", x].postln;
 		{
 			hit = recBuf[ind];
-			//[ind, hit[0], tempoClock.beats].postln;
 			hit[0].wait;
 			if(hit[4] == "on", {
 				midiOut.noteOn(hit[3], hit[1], hit[2]);
-				//[ind, tempoClock.beats].postln;
 			});
 			if(hit[4] == "off", {midiOut.noteOff(hit[3], hit[1], hit[2])});
 			ind = ind+1;
@@ -212,12 +197,7 @@ c = {|vel, note, chan, port|
 	});
 	if((note == tapTempoSetButton) && (vel == 127), {
 		var now = TempoClock.beats;
-		"tap".postln;
-		if((now - lastTap) < 2, {
-			"tapSet".postln;
-			(now - lastTap).postln;
-			tempoClock.tempo = 1/(now-lastTap);
-		});
+		if((now - lastTap) < 2, {tempoClock.tempo = 1/(now-lastTap)});
 		lastTap = now;
 	});
 	if((note == tapTempoToggle) && (vel == 127), {playMetronome = playMetronome.not});
@@ -228,55 +208,38 @@ c = {|vel, note, chan, port|
 			recordingState = 1;
 			recordingMetronome = true;
 			preRecordCount = 0;
-			"First record".postln;
 		});
 		if(recordingState == 3, {
-			"LOOP DISCARDED".postln;
-			recordingMetronome = false;
-			recordingState = 0;
 			tempLoopTask.stop;
-			//MIDI NOTES ALL OFF
 			recordBuffer.do({|elem| midiOut.noteOff(elem[3], elem[1])});
-
 			tempLoopTask.free;
-			tempLoopTask = nil;
-			launchpadOut.control(0, recordButton, recordColor);
+
+			resetRecordingState.();
 		});
 		if(recordingState == 2, {
 			recordingState = 3;
 			preRecordCount = 0;
 			recordingMetronome = false;
-			recordBuffer.postln;
 			tempLoopTask = createRecordedTask.(recordBuffer);
-			recordBuffer.clear();
-			x = x+1;
 			tempoClock.sched(tempoClock.timeToNextBeat, {tempLoopTask.start; nil;});
 		});
 	});
 	if(bankSet.includes(note) && (vel == 127), {
 		if(recordingState == 3,
 			{
-				recordingMetronome = false;
-				recordingState = 0;
-				launchpadOut.control(0, recordButton, recordColor);
-				["bankToSaveTo", bankToSaveTo].postln;
-
 				//save the recorded buffer to the appropriate bank
 				bankMap[note][2] = true;
 				bankMap[note][3] = tempLoopTask;
-				tempLoopTask = nil;
 				playingBanks.add(note);
+
+				resetRecordingState.();
 			},
 			{
 				var thisBank = bankMap[note];
-				["BANKHIT", thisBank[3]].postln;
 				if(thisBank[3] != nil, {
-					"IT GOT SCHEDULED".postln;
 					tempoClock.sched(tempoClock.timeToNextBeat, {
-						["PRE CLOCK CONDITIONAL", thisBank[2].not].postln;
 						if(thisBank[2].not,
 							{
-								"TURNING ON".postln;
 								//for all other banks for this inst, stop playing and turn their lights on
 								banks[thisBank[1]].do({|bNote|
 									if(bankMap[bNote][3] != nil, {
@@ -287,14 +250,12 @@ c = {|vel, note, chan, port|
 										playingBanks.remove(bNote);
 									})
 								});
-								//MIDI NOTES ALL OFF
 								midiOut.allNotesOff(thisBank[1]);
 								thisBank[3].start;
 								thisBank[2] = true;
 								playingBanks.add(note);
 							},
 							{
-								//MIDI NOTES ALL OFF
 								midiOut.allNotesOff(thisBank[1]);
 								"TURNING OFF".postln;
 								thisBank[3].stop;
@@ -311,6 +272,15 @@ c = {|vel, note, chan, port|
 	});
 };
 MIDIFunc.cc(c, nil, nil, launchPad.uid);
+
+resetRecordingState = {
+	recordingMetronome = false;
+	recordingState = 0;
+	launchpadOut.control(0, recordButton, recordColor);
+	recordBuffer.clear();
+	tempLoopTask = nil;
+};
+
 
 metronomeFlashTask = Task({
 	if(recordingMetronome || (tempLoopTask != nil),
