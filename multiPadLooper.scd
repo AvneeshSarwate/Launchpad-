@@ -1,5 +1,5 @@
 (
-var launchpadOut, padTL, padBL, padTR, padBR, colorBL1, colorBR1, colorTL1, colorTR1, colorBL2, colorBR2, colorTL2, colorTR2, colorON, pads, padMap, madePadList, scales, roots, padOn, padOff, setPadLights, transposes, makePadList, indToNote_, indToNote, midiOut, launchPad, tempoClock, chanSelectorButtons, controlChanInd, tapTempoSetButton, tapTempoToggle, recordButton, lastTap, playMetronome, recordingMetronome, metronomeFunc, preRecordCount, preRecordLength, recordBuffer, color1, tlBanks, trBanks, blBanks, brBanks, banks, bankMap, recordingState, bankSet, bankToSaveTo, bankToRecording, recordColor, tempLoopTask, createRecordedTask, playingBanks, metronomeFlashTask, recordingInterim;
+var launchpadOut, padTL, padBL, padTR, padBR, colorBL1, colorBR1, colorTL1, colorTR1, colorBL2, colorBR2, colorTL2, colorTR2, colorON, pads, padMap, madePadList, scales, roots, padOn, padOff, setPadLights, transposes, makePadList, indToNote_, indToNote, midiOut, launchPad, tempoClock, interruptLoopButtons, controlChanInd, tapTempoSetButton, tapTempoToggle, recordButton, lastTap, playMetronome, recordingMetronome, metronomeFunc, preRecordCount, preRecordLength, recordBuffer, color1, tlBanks, trBanks, blBanks, brBanks, banks, bankMap, recordingState, bankSet, bankToSaveTo, bankToRecording, recordColor, tempLoopTask, createRecordedTask, playingBanks, metronomeFlashTask, recordingInterim, resetRecordingState, interruptLooping, controlChanButton, arrowButtons, color2, up, down, left, right, padsByChannel;
 
 MIDIClient.init;
 MIDIIn.connectAll;
@@ -32,6 +32,7 @@ padTL = makePadList.(b, a, 0);
 padTR = makePadList.(b, b, 1);
 padBL = makePadList.(a, a, 2);
 padBR = makePadList.(a, b, 3);
+padsByChannel = [padTL, padTR, padBL, padBR];
 
 (pads - padMap.keys()).postln;
 
@@ -45,6 +46,7 @@ colorTL2 = 25;
 colorTR2 = 45;
 colorBL2 = 72;
 colorBR2 = 13;
+color2 = [colorTL2, colorTR2, colorBL2, colorBR2];
 
 colorON = 13;
 
@@ -79,13 +81,22 @@ indToNote_ = {|ind, scale, root, trans|
 indToNote = {|ind, chan| indToNote_.(ind, scales[chan], roots[chan], transposes[chan])};
 
 transposes = [-1, 4, -12, 0 ]; //+- 4 corresponds to up/down a row, +-1 corresponds to left/right a column
+arrowButtons = [91, 92, 93, 94];
+up = 91;
+down = 92;
+right = 93;
+left = 94;
 
-chanSelectorButtons = [95, 96, 97, 98];
-launchpadOut.control(0, 95, colorTL1);
-launchpadOut.control(0, 96, colorTR1);
-launchpadOut.control(0, 97, colorBL1);
-launchpadOut.control(0, 98, colorBR1);
+interruptLoopButtons = [1, 2, 3, 4];
+interruptLooping = [false, false, false, false, false];
+launchpadOut.control(0, 1, colorTL1);
+launchpadOut.control(0, 2, colorTR1);
+launchpadOut.control(0, 3, colorBL1);
+launchpadOut.control(0, 4, colorBR1);
+
 controlChanInd = 0;
+controlChanButton = 8;
+launchpadOut.control(0, controlChanButton, color1[controlChanInd]);
 
 
 //define setPadLights method
@@ -127,14 +138,15 @@ padOff = MIDIFunc.noteOff(b, nil, nil, launchPad.uid);
 x = 0;
 tempLoopTask = nil; //this var is only not nil when you have a recorded and unsaved loop
 createRecordedTask = {|oldRecBuf|
-	var startBeat, endBeat, timeAfterLastHit, recBuf, newTask, hangingNotes;
+	var startBeat, endBeat, timeAfterLastHit, recBuf, newTask, hangingNotes, chan;
 
 	recBuf = List.newFrom(oldRecBuf);
 	startBeat = recBuf[0][0].floor;
 	timeAfterLastHit = (recBuf[recBuf.size-1][0].ceil - recBuf[recBuf.size-1][0]);
 
 	//TODO: handle cases where multiple inst hits in a recBuf, or when there's no noteOns recorded
-	midiOut.allNotesOff(recBuf[0][3]);
+	chan = recBuf[0][3];
+	midiOut.allNotesOff(chan);
 	hangingNotes = Dictionary.new();
 	recBuf.do({|elem|
 		if(elem[4] == "on",
@@ -158,10 +170,10 @@ createRecordedTask = {|oldRecBuf|
 		{
 			hit = recBuf[ind];
 			hit[0].wait;
-			if(hit[4] == "on", {
-				midiOut.noteOn(hit[3], hit[1], hit[2]);
+			if(interruptLooping[chan].not, {
+				if(hit[4] == "on", {midiOut.noteOn(hit[3], hit[1], hit[2]);});
+				if(hit[4] == "off", {midiOut.noteOff(hit[3], hit[1], hit[2])});
 			});
-			if(hit[4] == "off", {midiOut.noteOff(hit[3], hit[1], hit[2])});
 			ind = ind+1;
 
 			if(ind == recBuf.size, {timeAfterLastHit.wait});
@@ -191,9 +203,10 @@ recordingState = 0;
 bankToSaveTo = 0;
 bankToRecording = Dictionary.new();
 c = {|vel, note, chan, port|
-	if(chanSelectorButtons.includes(note) && (vel == 127), {
-		controlChanInd = note - 95;
-		(0..3).do({|i| launchpadOut.control(0, i+95, color1[i])});
+	if(interruptLoopButtons.includes(note), {
+		var chan = note - interruptLoopButtons[0];
+		if((vel == 127), {midiOut.allNotesOff(chan)});
+		interruptLooping[chan] = vel == 127;
 	});
 	if((note == tapTempoSetButton) && (vel == 127), {
 		var now = TempoClock.beats;
@@ -240,6 +253,7 @@ c = {|vel, note, chan, port|
 					tempoClock.sched(tempoClock.timeToNextBeat, {
 						if(thisBank[2].not,
 							{
+								if(false, {//with this as false, banks can be overlayed
 								//for all other banks for this inst, stop playing and turn their lights on
 								banks[thisBank[1]].do({|bNote|
 									if(bankMap[bNote][3] != nil, {
@@ -249,7 +263,7 @@ c = {|vel, note, chan, port|
 										Task({0.001.wait; launchpadOut.control(0, bNote, color1[elem[1]]);}).play;
 										playingBanks.remove(bNote);
 									})
-								});
+								});});
 								midiOut.allNotesOff(thisBank[1]);
 								thisBank[3].start;
 								thisBank[2] = true;
@@ -270,6 +284,18 @@ c = {|vel, note, chan, port|
 				});
 		});
 	});
+	if((note == controlChanButton) && (vel == 127), {
+		controlChanInd = (controlChanInd+1) % 4;
+		launchpadOut.control(0, controlChanButton, color1[controlChanInd]);
+	});
+	if(arrowButtons.includes(note) && (vel == 127), {
+		var ind = controlChanInd;
+		if(note == up, {transposes[ind] = transposes[ind] - 4});
+		if(note == down, {transposes[ind] = transposes[ind] + 4});
+		if(note == right, {transposes[ind] = transposes[ind] + 1});
+		if(note == left, {transposes[ind] = transposes[ind] - 1});
+		setPadLights.(padsByChannel[ind], color1[ind], color2[ind], ind);
+	});
 };
 MIDIFunc.cc(c, nil, nil, launchPad.uid);
 
@@ -285,11 +311,9 @@ resetRecordingState = {
 metronomeFlashTask = Task({
 	if(recordingMetronome || (tempLoopTask != nil),
 		{launchpadOut.control(0, recordButton, (recordingState==2).if(17,recordColor))});
-	launchpadOut.control(0, controlChanInd+95, color1[controlChanInd]);
 	playingBanks.do({|bNote| launchpadOut.control(0, bNote, color1[bankMap[bNote][1]])});
 	(tempoClock.beatDur/2).wait;
 	if(recordingMetronome || (tempLoopTask != nil), {launchpadOut.control(0, recordButton, 0)});
-	launchpadOut.control(0, controlChanInd+95, 0);
 	playingBanks.do({|bNote| launchpadOut.control(0, bNote, 0)});
 });
 
@@ -365,4 +389,9 @@ cfunk = {
 t = Task({ { "I'm loopy".postln; 1.wait;}.loop });
 t.start;
 )
-t.stop
+
+(
+a = 5;
+a+=1
+)
+
