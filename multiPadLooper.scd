@@ -1,5 +1,5 @@
 (
-var launchpadOut, padTL, padBL, padTR, padBR, colorBL1, colorBR1, colorTL1, colorTR1, colorBL2, colorBR2, colorTL2, colorTR2, colorON, pads, padMap, madePadList, scales, roots, padOn, padOff, setPadLights, transposes, makePadList, indToNote_, indToNote, midiOut, launchPad, tempoClock, interruptLoopButtons, controlChanInd, tapTempoSetButton, tapTempoToggle, recordButton, lastTap, playMetronome, recordingMetronome, metronomeFunc, preRecordCount, preRecordLength, recordBuffer, color1, tlBanks, trBanks, blBanks, brBanks, banks, bankMap, recordingState, bankSet, bankToSaveTo, bankToRecording, recordColor, tempLoopTask, createRecordedTask, playingBanks, metronomeFlashTask, recordingInterim, resetRecordingState, interruptLooping, controlChanButton, arrowButtons, color2, up, down, left, right, padsByChannel;
+var launchpadOut, padTL, padBL, padTR, padBR, colorBL1, colorBR1, colorTL1, colorTR1, colorBL2, colorBR2, colorTL2, colorTR2, colorON, pads, padMap, madePadList, scales, roots, padOn, padOff, setPadLights, transposes, makePadList, indToNote_, indToNote, midiOut, launchPad, tempoClock, interruptLoopButtons, controlChanInd, tapTempoSetButton, tapTempoToggle, recordButton, lastTap, playMetronome, recordingMetronome, metronomeFunc, preRecordCount, preRecordLength, recordBuffer, color1, tlBanks, trBanks, blBanks, brBanks, banks, bankMap, recordingState, bankSet, bankToSaveTo, bankToRecording, recordColor, tempLoopTask, createRecordedTask, playingBanks, metronomeFlashTask, recordingInterim, resetRecordingState, interruptLooping, controlChanButton, arrowButtons, color2, up, down, left, right, padsByChannel, recordingStartBeat;
 
 MIDIClient.init;
 MIDIIn.connectAll;
@@ -69,10 +69,10 @@ playingBanks = Set.new();
 scales = [
 	[0, 2, 3, 5, 7, 10], //TL
 	[0, 3, 5, 7, 10], //TR
-	[0, 3, 5, 7, 10], //BL
+	[0, 2, 3, 5, 7, 8, 10], //BL
 	[0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11], //BR
 ];
-roots = [60, 60, 36, 36];
+roots = [66, 66, 42, 36];
 
 indToNote_ = {|ind, scale, root, trans|
 	root + scale[(ind+trans)%scale.size()] + (((ind+trans) / scale.size).floor * 12);
@@ -121,7 +121,7 @@ a = {|vel, note, chan, port|
 		var padInfo = padMap[note];
 		var newNote = indToNote.(padInfo[0], padInfo[1]);
 		midiOut.noteOn(padInfo[1], newNote, vel);
-		if((recordingState == 2), {recordBuffer.add([tempoClock.beats, newNote, vel, padInfo[1], "on"])});
+		if(recordingMetronome, {recordBuffer.add([tempoClock.beats, newNote, vel, padInfo[1], "on"])});
 	});
 };
 padOn = MIDIFunc.noteOn(a, nil, nil, launchPad.uid);
@@ -131,7 +131,7 @@ b = {|vel, note, chan, port|
 		var padInfo = padMap[note];
 		var newNote = indToNote.(padInfo[0], padInfo[1]);
 		midiOut.noteOff(padInfo[1], newNote, vel);
-		if(recordingState == 2 , {recordBuffer.add([tempoClock.beats, newNote, vel, padInfo[1], "off"])});
+		if(recordingMetronome, {recordBuffer.add([tempoClock.beats, newNote, vel, padInfo[1], "off"])});
 	});
 };
 padOff = MIDIFunc.noteOff(b, nil, nil, launchPad.uid);
@@ -141,7 +141,15 @@ createRecordedTask = {|oldRecBuf|
 	var startBeat, endBeat, timeAfterLastHit, recBuf, newTask, hangingNotes, chan;
 
 	recBuf = List.newFrom(oldRecBuf);
-	startBeat = recBuf[0][0].floor;
+	startBeat = recordingStartBeat;//recBuf[0][0].floor;
+
+	recBuf.do({|hit|
+		if(hit[0] < startBeat,
+			{hit[0] = startBeat},
+			//TODO: alternative - quantaize to 4ths or 6ths, chose based on minimum error (can change per beat)
+			{hit[0] = hit[0].floor + ((hit[0]%1 * 6).round / 6)}
+		);
+	});
 	timeAfterLastHit = (recBuf[recBuf.size-1][0].ceil - recBuf[recBuf.size-1][0]);
 
 	//TODO: handle cases where multiple inst hits in a recBuf, or when there's no noteOns recorded
@@ -160,8 +168,13 @@ createRecordedTask = {|oldRecBuf|
 		recBuf.add(newHit);
 	});
 
+	recBuf.do({|hit| ["HIT TIME", hit[4], hit[0]].postln});
+
 	(recBuf.size-1..1).do({|i| recBuf[i][0] = recBuf[i][0] - recBuf[i-1][0]});
 	recBuf[0][0] = recBuf[0][0] - startBeat;
+
+	recBuf.do({|hit| ["Duration TIll", hit[4], hit[0]].postln});
+	["time after last", timeAfterLastHit].postln;
 
 	newTask = Task({
 		var ind = 0;
@@ -307,7 +320,6 @@ resetRecordingState = {
 	tempLoopTask = nil;
 };
 
-
 metronomeFlashTask = Task({
 	if(recordingMetronome || (tempLoopTask != nil),
 		{launchpadOut.control(0, recordButton, (recordingState==2).if(17,recordColor))});
@@ -326,8 +338,11 @@ metronomeFunc = {
 				preRecordCount = preRecordCount + 1;
 				["prerecordMetronome", preRecordCount].postln;
 			},
-			{
-				if(recordingState == 1, {recordingState = 2});
+			{//TODO: clean up and write comments for recroding state handling
+				if(recordingState == 1, {
+					recordingState = 2;
+					recordingStartBeat = tempoClock.beats.round;
+				});
 				recordingInterim = false;
 				"RECORDING".postln;
 			}
@@ -370,6 +385,14 @@ basic layout
 */
 
 )
+
+// ================================================================================================
+// ================================================================================================
+//SCRATCH CODE
+
+
+
+
 Task({}) != nil
 (
 MIDIClient.init;
@@ -387,9 +410,9 @@ cfunk = {
 )
 (
 t = Task({ { "I'm loopy".postln; 1.wait;}.loop });
-t.start;
+t.start;//TODO: see what results in "already playing" errors (use task.isPlaying)
 )
-
+t.play
 (
 a = 5;
 a+=1
