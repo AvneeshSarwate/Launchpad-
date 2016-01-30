@@ -1,5 +1,5 @@
 (
-var launchpadOut, padTL, padBL, padTR, padBR, colorBL1, colorBR1, colorTL1, colorTR1, colorBL2, colorBR2, colorTL2, colorTR2, colorON, pads, padMap, madePadList, scales, roots, padOn, padOff, setPadLights, transposes, makePadList, indToNote_, indToNote, midiOut, launchPad, tempoClock, interruptLoopButtons, controlChanInd, tapTempoSetButton, tapTempoToggle, recordButton, lastTap, playMetronome, recordingMetronome, metronomeFunc, preRecordCount, preRecordLength, recordBuffer, color1, tlBanks, trBanks, blBanks, brBanks, banks, bankMap, recordingState, bankSet, bankToSaveTo, bankToRecording, recordColor, tempLoopTask, createRecordedTask, playingBanks, metronomeFlashTask, recordingInterim, resetRecordingState, interruptLooping, controlChanButton, arrowButtons, color2, up, down, left, right, padsByChannel, recordingStartBeat;
+var launchpadOut, padTL, padBL, padTR, padBR, colorBL1, colorBR1, colorTL1, colorTR1, colorBL2, colorBR2, colorTL2, colorTR2, colorON, pads, padMap, madePadList, scales, roots, padOn, padOff, setPadLights, transposes, makePadList, indToNote_, indToNote, midiOut, launchPad, tempoClock, interruptLoopButtons, controlChanInd, tapTempoSetButton, tapTempoToggle, recordButton, lastTap, playMetronome, recordingMetronome, metronomeFunc, preRecordCount, preRecordLength, recordBuffer, color1, tlBanks, trBanks, blBanks, brBanks, banks, bankMap, recordingState, bankSet, bankToSaveTo, bankToRecording, recordColor, tempLoopTask, createRecordedTask, playingBanks, metronomeFlashTask, recordingInterim, resetRecordingState, interruptLooping, controlChanButton, arrowButtons, color2, up, down, left, right, padsByChannel, recordingStartBeat, findBestQuantDiv;
 
 MIDIClient.init;
 MIDIIn.connectAll;
@@ -137,19 +137,66 @@ b = {|vel, note, chan, port|
 padOff = MIDIFunc.noteOff(b, nil, nil, launchPad.uid);
 x = 0;
 tempLoopTask = nil; //this var is only not nil when you have a recorded and unsaved loop
+
+//TODO: alternative - quantaize to 4ths or 6ths, chose based on minimum error (can change per beat)
+//{hit[0] = hit[0].floor + ((hit[0]%1 * 6).round / 6)}
+findBestQuantDiv = {|recBuf, quantDivArray, startBeat|
+
+	//divide array into hits-per-beat
+	//apply calc-error-for-hits-and-div
+	//select div with least error
+	var currentBeat = 0;
+	var listsPerBeat = List.new();
+	var quantizedHits = List.new();
+	listsPerBeat.add(List.new());
+	recBuf.do({|hit| if(hit[0] < startBeat, {hit[0] = startBeat}) });
+	recBuf.do({|hit|
+		var indexBeat = hit[0].floor-startBeat;
+		if(indexBeat > currentBeat,
+			{ listsPerBeat.add(List.new()) },
+			{ listsPerBeat[currentBeat].add(hit) }
+		);
+	});
+
+
+	listsPerBeat.do({|hits|
+		var quantLists = List.new();
+		var bestList = [List.new(), 1];
+		var quantHitList;
+		quantDivArray.do({|div|
+			var quantList = List.new();
+			var error = 0;
+			hits.do({|hit| quantList.add(hit.floor + ((hit%1 * div).round / div))});
+			(hits.size-1).do({|i| error = error + (hits[i][0] - quantList[i]).abs});
+			quantLists.add([quantList, error]);
+		});
+		quantLists.do({|listErr| if(listErr[1] < bestList[1], {bestList = listErr})});
+		quantHitList = List.fill(hits.size, {|i|
+			var newHit = List.newFrom(hits[i]);
+			newHit[0] = bestList[0][i];
+			newHit
+		});
+		quantizedHits.add(quantHitList);
+	});
+
+	quantizedHits.inject([], _++_);
+};
+
+
 createRecordedTask = {|oldRecBuf|
-	var startBeat, endBeat, timeAfterLastHit, recBuf, newTask, hangingNotes, chan;
+	var startBeat, endBeat, timeAfterLastHit, recBuf, newTask, hangingNotes, chan, quantLevels, bestQuantLev;
 
 	recBuf = List.newFrom(oldRecBuf);
 	startBeat = recordingStartBeat;//recBuf[0][0].floor;
+	quantLevels = [4, 6];
 
-	recBuf.do({|hit|
+	/*recBuf.do({|hit|
 		if(hit[0] < startBeat,
 			{hit[0] = startBeat},
 			//TODO: alternative - quantaize to 4ths or 6ths, chose based on minimum error (can change per beat)
 			{hit[0] = hit[0].floor + ((hit[0]%1 * 6).round / 6)}
 		);
-	});
+	});*/
 	timeAfterLastHit = (recBuf[recBuf.size-1][0].ceil - recBuf[recBuf.size-1][0]);
 
 	//TODO: handle cases where multiple inst hits in a recBuf, or when there's no noteOns recorded
