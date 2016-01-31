@@ -1,5 +1,5 @@
 (
-var launchpadOut, padTL, padBL, padTR, padBR, colorBL1, colorBR1, colorTL1, colorTR1, colorBL2, colorBR2, colorTL2, colorTR2, colorON, pads, padMap, madePadList, scales, roots, padOn, padOff, setPadLights, transposes, makePadList, indToNote_, indToNote, midiOut, launchPad, tempoClock, interruptLoopButtons, controlChanInd, tapTempoSetButton, tapTempoToggle, recordButton, lastTap, playMetronome, recordingMetronome, metronomeFunc, preRecordCount, preRecordLength, recordBuffer, color1, tlBanks, trBanks, blBanks, brBanks, banks, bankMap, recordingState, bankSet, bankToSaveTo, bankToRecording, recordColor, tempLoopTask, createRecordedTask, playingBanks, metronomeFlashTask, recordingInterim, resetRecordingState, interruptLooping, controlChanButton, arrowButtons, color2, up, down, left, right, padsByChannel, recordingStartBeat, findBestQuantDiv;
+var launchpadOut, padTL, padBL, padTR, padBR, colorBL1, colorBR1, colorTL1, colorTR1, colorBL2, colorBR2, colorTL2, colorTR2, colorON, pads, padMap, madePadList, scales, roots, padOn, padOff, setPadLights, transposes, makePadList, indToNote_, indToNote, midiOut, launchPad, tempoClock, interruptLoopButtons, controlChanInd, tapTempoSetButton, tapTempoToggle, recordButton, lastTap, playMetronome, recordingMetronome, metronomeFunc, preRecordCount, preRecordLength, recordBuffer, color1, tlBanks, trBanks, blBanks, brBanks, banks, bankMap, recordingState, bankSet, bankToSaveTo, bankToRecording, recordColor, tempLoopTask, createRecordedTask, playingBanks, metronomeFlashTask, recordingInterim, resetRecordingState, interruptLooping, controlChanButton, arrowButtons, color2, up, down, left, right, padsByChannel, recordingStartBeat, quantize;
 
 MIDIClient.init;
 MIDIIn.connectAll;
@@ -140,7 +140,7 @@ tempLoopTask = nil; //this var is only not nil when you have a recorded and unsa
 
 //TODO: alternative - quantaize to 4ths or 6ths, chose based on minimum error (can change per beat)
 //{hit[0] = hit[0].floor + ((hit[0]%1 * 6).round / 6)}
-findBestQuantDiv = {|recBuf, quantDivArray, startBeat|
+quantize = {|recBuf, quantDivArray, startBeat|
 
 	//divide array into hits-per-beat
 	//apply calc-error-for-hits-and-div
@@ -150,14 +150,17 @@ findBestQuantDiv = {|recBuf, quantDivArray, startBeat|
 	var quantizedHits = List.new();
 	listsPerBeat.add(List.new());
 	recBuf.do({|hit| if(hit[0] < startBeat, {hit[0] = startBeat}) });
+
 	recBuf.do({|hit|
 		var indexBeat = hit[0].floor-startBeat;
-		if(indexBeat > currentBeat,
-			{ listsPerBeat.add(List.new()) },
-			{ listsPerBeat[currentBeat].add(hit) }
-		);
+		["HIT", indexBeat, currentBeat, hit].postln;
+		if(indexBeat > currentBeat, {
+			listsPerBeat.add(List.new());
+			currentBeat = indexBeat;
+		});
+		listsPerBeat[currentBeat].add(hit);
 	});
-
+	"POST THAT".postln;
 
 	listsPerBeat.do({|hits|
 		var quantLists = List.new();
@@ -165,8 +168,8 @@ findBestQuantDiv = {|recBuf, quantDivArray, startBeat|
 		var quantHitList;
 		quantDivArray.do({|div|
 			var quantList = List.new();
-			var error = 0;
-			hits.do({|hit| quantList.add(hit.floor + ((hit%1 * div).round / div))});
+			var error = 0; //TODO: ignore noteOff messages for quantization?
+			hits.do({|hit| quantList.add(hit[0].floor + ((hit[0]%1 * div).round / div))});
 			(hits.size-1).do({|i| error = error + (hits[i][0] - quantList[i]).abs});
 			quantLists.add([quantList, error]);
 		});
@@ -197,6 +200,9 @@ createRecordedTask = {|oldRecBuf|
 			{hit[0] = hit[0].floor + ((hit[0]%1 * 6).round / 6)}
 		);
 	});*/
+	["SIZE PRE QUANT", recBuf.size].postln;
+	recBuf = quantize.(recBuf, quantLevels, startBeat);
+	["SIZE POST QUANT", recBuf.size].postln;
 	timeAfterLastHit = (recBuf[recBuf.size-1][0].ceil - recBuf[recBuf.size-1][0]);
 
 	//TODO: handle cases where multiple inst hits in a recBuf, or when there's no noteOns recorded
@@ -215,13 +221,13 @@ createRecordedTask = {|oldRecBuf|
 		recBuf.add(newHit);
 	});
 
-	recBuf.do({|hit| ["HIT TIME", hit[4], hit[0]].postln});
+	recBuf.do({|hit| if(true/*hit[4] == "on"*/, {["HIT TIME", hit[4], hit[0]].postln})});
 
 	(recBuf.size-1..1).do({|i| recBuf[i][0] = recBuf[i][0] - recBuf[i-1][0]});
 	recBuf[0][0] = recBuf[0][0] - startBeat;
 
-	recBuf.do({|hit| ["Duration TIll", hit[4], hit[0]].postln});
-	["time after last", timeAfterLastHit].postln;
+	//recBuf.do({|hit| ["Duration TIll", hit[4], hit[0]].postln});
+	//["time after last", timeAfterLastHit].postln;
 
 	newTask = Task({
 		var ind = 0;
