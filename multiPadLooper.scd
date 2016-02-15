@@ -182,7 +182,10 @@ quantize = {|recBuf, quantDivArray, startBeat|
 		quantizedHits.add(quantHitList);
 	});
 
-	quantizedHits.inject([], _++_);
+	//TODO - something still messed up with long held notes
+	//TOGGLE QUANTIZATION HERE
+	//quantizedHits.inject([], _++_);
+	recBuf;
 };
 
 
