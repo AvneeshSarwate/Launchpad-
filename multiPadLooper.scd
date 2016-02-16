@@ -462,12 +462,27 @@ file.close;
 5
 )
 
+(
+var fileStr = File("~/testFilename1.txt".standardizePath, "r").readAllString;
+fileStr.postln;
+fileStr.split("\n").do({|line|
+	var lineSplit = line.split(" ");
+	var key = lineSplit[0].asInteger;
+	var recBuf = lineSplit[1].split("-").collect({|hitString|
+		var sp = hitString.split(",");
+		[sp[0].asFloat, sp[1].asInt, sp[2].asInt, sp[3].asInt, sp[4]]
+	});
+	recBuf.postln;
+	//call createTask (assign to global var) and set it in bankMap (f)
+	//turn on lights of necessary banks
+});
+)
+"0.5".asFloat + "7".asInteger
+["5", "6", "7"].collect({|st| st.asInt}) + 10
 
 
 
-"a".scatList([3, 4, 5])
-[[3, 4], [6, 5]].collect({|item| item.join(",")}).join("-")
-"".ccatList([1, 2, 3])
+
 
 Task({}) != nil
 (
