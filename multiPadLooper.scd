@@ -57,10 +57,11 @@ brBanks = [19, 29, 39, 49];
 banks = [tlBanks, trBanks, blBanks, brBanks];
 bankSet = Set.new();
 bankSet.addAll(banks.flatten(1));
-bankMap = Dictionary.new(); //midiNote -> [bankInd, bankChan, isOn, loopTask/nil]
+bankMap = Dictionary.new(); //midiNote -> [bankInd, bankChan, isOn, loopTask/nil, loopString]
+f = bankMap;
 (0..3).do({|i| (0..3).do({|j|
 	//launchpadOut.control(0, j, color1[i]);
-	bankMap.put(banks[i][j], [j, i, false, nil]);
+	bankMap.put(banks[i][j], [j, i, false, nil, nil]);
 })});
 bankSet.do({|i| launchpadOut.control(0, i, 0)});
 playingBanks = Set.new();
@@ -312,6 +313,7 @@ c = {|vel, note, chan, port|
 				//save the recorded buffer to the appropriate bank
 				bankMap[note][2] = true;
 				bankMap[note][3] = tempLoopTask;
+				bankMap[note][4] = recordBuffer.collect({|item| item.join(",")}).join("-");
 				playingBanks.add(note);
 
 				resetRecordingState.();
@@ -447,7 +449,25 @@ basic layout
 //SCRATCH CODE
 
 
+(
+var file = File("~/testFilename1.txt".standardizePath, "w");
+f.keys.do({|key|
+	if(f[key][4] != nil, {
+		var str = key+f[key][4]++"\n";
+		str.postln;
+		file.putString(str);
+	});
+});
+file.close;
+5
+)
 
+
+
+
+"a".scatList([3, 4, 5])
+[[3, 4], [6, 5]].collect({|item| item.join(",")}).join("-")
+"".ccatList([1, 2, 3])
 
 Task({}) != nil
 (
