@@ -450,7 +450,7 @@ basic layout
 
 
 (
-var file = File("~/testFilename1.txt".standardizePath, "w");
+var file = File("~/testFilename2.txt".standardizePath, "wb");
 f.keys.do({|key|
 	if(f[key][4] != nil, {
 		var str = key+f[key][4]++"\n";
@@ -463,19 +463,27 @@ file.close;
 )
 
 (
-var fileStr = File("~/testFilename1.txt".standardizePath, "r").readAllString;
-fileStr.postln;
-fileStr.split("\n").do({|line|
-	var lineSplit = line.split(" ");
-	var key = lineSplit[0].asInteger;
-	var recBuf = lineSplit[1].split("-").collect({|hitString|
-		var sp = hitString.split(",");
-		[sp[0].asFloat, sp[1].asInt, sp[2].asInt, sp[3].asInt, sp[4]]
-	});
-	recBuf.postln;
-	//call createTask (assign to global var) and set it in bankMap (f)
-	//turn on lights of necessary banks
-});
+
+var file = File.open("~/testFilename2.txt".standardizePath, "rb");
+var fileStr = file.readAllString;
+"~/basic.txt".standardizePath.postln;
+file.length.postln;
+file.pos.postln;
+file.close;
+fileStr[1].postln;
+fileStr.class.postln;
+["FILE HURR", fileStr.asSymbol].postln;
+// fileStr.split("\n").do({|line|
+// 	var lineSplit = line.split(" ");
+// 	var key = lineSplit[0].asInteger;
+// 	var recBuf = lineSplit[1].split("-").collect({|hitString|
+// 		var sp = hitString.split(",");
+// 		[sp[0].asFloat, sp[1].asInt, sp[2].asInt, sp[3].asInt, sp[4]]
+// 	});
+// 	recBuf.postln;
+// 	//call createTask (assign to global var) and set it in bankMap (f)
+// 	//turn on lights of necessary banks
+// });
 )
 "0.5".asFloat + "7".asInteger
 ["5", "6", "7"].collect({|st| st.asInt}) + 10
