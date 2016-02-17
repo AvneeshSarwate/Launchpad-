@@ -1,5 +1,5 @@
 (
-var launchpadOut, padTL, padBL, padTR, padBR, colorBL1, colorBR1, colorTL1, colorTR1, colorBL2, colorBR2, colorTL2, colorTR2, colorON, pads, padMap, madePadList, scales, roots, padOn, padOff, setPadLights, transposes, makePadList, indToNote_, indToNote, midiOut, launchPad, tempoClock, interruptLoopButtons, controlChanInd, tapTempoSetButton, tapTempoToggle, recordButton, lastTap, playMetronome, recordingMetronome, metronomeFunc, preRecordCount, preRecordLength, recordBuffer, color1, tlBanks, trBanks, blBanks, brBanks, banks, bankMap, recordingState, bankSet, bankToSaveTo, bankToRecording, recordColor, tempLoopTask, createRecordedTask, playingBanks, metronomeFlashTask, recordingInterim, resetRecordingState, interruptLooping, controlChanButton, arrowButtons, color2, up, down, left, right, padsByChannel, recordingStartBeat, quantize;
+var launchpadOut, padTL, padBL, padTR, padBR, colorBL1, colorBR1, colorTL1, colorTR1, colorBL2, colorBR2, colorTL2, colorTR2, colorON, pads, padMap, madePadList, scales, roots, padOn, padOff, setPadLights, transposes, makePadList, indToNote_, indToNote, midiOut, launchPad, tempoClock, interruptLoopButtons, controlChanInd, tapTempoSetButton, tapTempoToggle, recordButton, lastTap, playMetronome, recordingMetronome, metronomeFunc, preRecordCount, preRecordLength, recordBuffer, color1, tlBanks, trBanks, blBanks, brBanks, banks, bankMap, recordingState, bankSet, bankToSaveTo, bankToRecording, recordColor, tempLoopTask, tempLoopString, createRecordedTask, playingBanks, metronomeFlashTask, recordingInterim, resetRecordingState, interruptLooping, controlChanButton, arrowButtons, color2, up, down, left, right, padsByChannel, recordingStartBeat, quantize;
 
 MIDIClient.init;
 MIDIIn.connectAll;
@@ -140,6 +140,7 @@ b = {|vel, note, chan, port|
 padOff = MIDIFunc.noteOff(b, nil, nil, launchPad.uid);
 x = 0;
 tempLoopTask = nil; //this var is only not nil when you have a recorded and unsaved loop
+tempLoopString = nil;
 
 //TODO: alternative - quantaize to 4ths or 6ths, chose based on minimum error (can change per beat)
 //{hit[0] = hit[0].floor + ((hit[0]%1 * 6).round / 6)}
@@ -192,11 +193,11 @@ quantize = {|recBuf, quantDivArray, startBeat|
 };
 
 
-createRecordedTask = {|oldRecBuf|
+createRecordedTask = {|oldRecBuf, loopStartBeat|
 	var startBeat, endBeat, timeAfterLastHit, recBuf, newTask, hangingNotes, chan, quantLevels, bestQuantLev;
 
 	recBuf = List.newFrom(oldRecBuf);
-	startBeat = recordingStartBeat;//recBuf[0][0].floor;
+	startBeat = loopStartBeat;//recBuf[0][0].floor;
 	quantLevels = [4, 6];
 
 	/*recBuf.do({|hit|
@@ -306,7 +307,8 @@ c = {|vel, note, chan, port|
 			recordingState = 3;
 			preRecordCount = 0;
 			recordingMetronome = false;
-			tempLoopTask = createRecordedTask.(recordBuffer);
+			tempLoopString = recordBuffer.collect({|item| item.join(",")}).join("-");
+			tempLoopTask = createRecordedTask.(recordBuffer, recordingStartBeat);
 			tempoClock.sched(tempoClock.timeToNextBeat, {tempLoopTask.start; nil;});
 		});
 	});
@@ -316,7 +318,7 @@ c = {|vel, note, chan, port|
 				//save the recorded buffer to the appropriate bank
 				bankMap[note][2] = true;
 				bankMap[note][3] = tempLoopTask;
-				bankMap[note][4] = recordBuffer.collect({|item| item.join(",")}).join("-");
+				bankMap[note][4] = note + tempLoopString + recordingStartBeat;
 				playingBanks.add(note);
 
 				resetRecordingState.();
@@ -379,6 +381,7 @@ resetRecordingState = {
 	launchpadOut.control(0, recordButton, recordColor);
 	recordBuffer.clear();
 	tempLoopTask = nil;
+	tempLoopString = nil;
 };
 
 metronomeFlashTask = Task({
@@ -453,12 +456,12 @@ basic layout
 
 
 (
-var file = File("~/testFilename3.txt".standardizePath, "wb");
+var file = File("~/testFilename4.txt".standardizePath, "wb");
 var lines = List.new();
 f.keys.do({|key|
 	if(f[key][4] != nil, {
-		var str = key+f[key][4]++"\n";
-		lines.add(key+f[key][4]);
+		var str = f[key][4]++"\n";
+		lines.add(f[key][4]);
 		str.postln;
 		//file.putString(str);
 	});
@@ -469,7 +472,7 @@ file.close;
 )
 
 (
-var file = File.open("~/testFilename3.txt".standardizePath, "rb");
+var file = File.open("~/testFilename4.txt".standardizePath, "rb");
 var fileStr = file.readAllString;
 var fileSplit = fileStr.split($\n);
 var launchpadOut = MIDIOut.newByName("Launchpad Pro", "Standalone Port");
@@ -477,6 +480,7 @@ fileSplit.size.postln;
 fileSplit.do({|line|
 	var lineSplit = line.split($ );
 	var key = lineSplit[0].asInteger;
+	var startBeat = lineSplit[2].asFloat;
 	var recBuf = lineSplit[1].split($-).collect({|hitString|
 		var sp = hitString.split($,);
 		[sp[0].asFloat, sp[1].asInt, sp[2].asInt, sp[3].asInt, sp[4]]
@@ -485,7 +489,7 @@ fileSplit.do({|line|
 	recBuf.do({|hit| hit.postln});
 
 	//call createTask (assign to global var) and set it in bankMap (f)
-	f[key][3] = r.(recBuf);
+	f[key][3] = r.(recBuf, startBeat);
 	f[key][4] = lineSplit[1];
 
 	//turn on lights of necessary banks
