@@ -41,6 +41,7 @@ colorTR1 = 112;
 colorBL1 = 4;
 colorBR1 = 83;
 color1 = [colorTL1, colorTR1, colorBL1, colorBR1];
+l = color1;
 
 colorTL2 = 25;
 colorTR2 = 45;
@@ -55,13 +56,14 @@ trBanks = [59, 69, 79, 89];
 blBanks = [10, 20, 30, 40];
 brBanks = [19, 29, 39, 49];
 banks = [tlBanks, trBanks, blBanks, brBanks];
+k = banks;
 bankSet = Set.new();
 bankSet.addAll(banks.flatten(1));
 bankMap = Dictionary.new(); //midiNote -> [bankInd, bankChan, isOn, loopTask/nil, loopString]
 f = bankMap;
 (0..3).do({|i| (0..3).do({|j|
 	//launchpadOut.control(0, j, color1[i]);
-	bankMap.put(banks[i][j], [j, i, false, nil, nil]);
+	bankMap.put(banks[i][j], [j, i, false, nil, nil]); //TODO: reverse i,j here and everywhere else
 })});
 bankSet.do({|i| launchpadOut.control(0, i, 0)});
 playingBanks = Set.new();
@@ -150,8 +152,8 @@ quantize = {|recBuf, quantDivArray, startBeat|
 	var listsPerBeat = List.new();
 	var quantizedHits = List.new();
 	listsPerBeat.add(List.new());
-	recBuf.do({|hit| if(hit[0] < startBeat, {hit[0] = startBeat}) });
-
+	recBuf.do({|hit| [hit[0], startBeat].postln; if(hit[0] < startBeat, {hit[0] = startBeat}) });
+	"LOG1".postln;
 	recBuf.do({|hit|
 		var indexBeat = hit[0].floor-startBeat;
 		["HIT", indexBeat, currentBeat, hit].postln;
@@ -253,6 +255,7 @@ createRecordedTask = {|oldRecBuf|
 
 	newTask;
 };
+r = createRecordedTask;
 
 //TODO: move variable instations to near the functions that use them
 tempoClock = TempoClock.new(1);
@@ -446,51 +449,59 @@ basic layout
 
 // ================================================================================================
 // ================================================================================================
-//SCRATCH CODE
+//FILE SAVE/LOAD
 
 
 (
-var file = File("~/testFilename2.txt".standardizePath, "wb");
+var file = File("~/testFilename3.txt".standardizePath, "wb");
+var lines = List.new();
 f.keys.do({|key|
 	if(f[key][4] != nil, {
 		var str = key+f[key][4]++"\n";
+		lines.add(key+f[key][4]);
 		str.postln;
-		file.putString(str);
+		//file.putString(str);
 	});
 });
+file.putString(lines.join("\n"));
 file.close;
 5
 )
 
 (
-
-var file = File.open("~/testFilename2.txt".standardizePath, "rb");
+var file = File.open("~/testFilename3.txt".standardizePath, "rb");
 var fileStr = file.readAllString;
-"~/basic.txt".standardizePath.postln;
-file.length.postln;
-file.pos.postln;
-file.close;
-fileStr[1].postln;
-fileStr.class.postln;
-["FILE HURR", fileStr.asSymbol].postln;
-// fileStr.split("\n").do({|line|
-// 	var lineSplit = line.split(" ");
-// 	var key = lineSplit[0].asInteger;
-// 	var recBuf = lineSplit[1].split("-").collect({|hitString|
-// 		var sp = hitString.split(",");
-// 		[sp[0].asFloat, sp[1].asInt, sp[2].asInt, sp[3].asInt, sp[4]]
-// 	});
-// 	recBuf.postln;
-// 	//call createTask (assign to global var) and set it in bankMap (f)
-// 	//turn on lights of necessary banks
-// });
+var fileSplit = fileStr.split($\n);
+var launchpadOut = MIDIOut.newByName("Launchpad Pro", "Standalone Port");
+fileSplit.size.postln;
+fileSplit.do({|line|
+	var lineSplit = line.split($ );
+	var key = lineSplit[0].asInteger;
+	var recBuf = lineSplit[1].split($-).collect({|hitString|
+		var sp = hitString.split($,);
+		[sp[0].asFloat, sp[1].asInt, sp[2].asInt, sp[3].asInt, sp[4]]
+	});
+	recBuf.sort({|a, b| a[0] < b[0]});
+	recBuf.do({|hit| hit.postln});
+
+	//call createTask (assign to global var) and set it in bankMap (f)
+	f[key][3] = r.(recBuf);
+	f[key][4] = lineSplit[1];
+
+	//turn on lights of necessary banks
+	launchpadOut.control(0, k[f[key][1]][f[key][0]], l[f[key][1]]);
+});
 )
+
+
+// ================================================================================================
+// ================================================================================================
 "0.5".asFloat + "7".asInteger
 ["5", "6", "7"].collect({|st| st.asInt}) + 10
 
+[1, 2, "a"] < [1, 2, "c"]
 
-
-
+"abcdefg"[1..3]
 
 Task({}) != nil
 (
