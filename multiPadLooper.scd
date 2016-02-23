@@ -216,6 +216,8 @@ createRecordedTask = {|oldRecBuf, loopStartBeat|
 	chan = recBuf[0][3];
 	midiOut.allNotesOff(chan);
 	hangingNotes = Dictionary.new();
+
+	//todo: something about this is still leavning notes on at the end of a loop
 	recBuf.do({|elem|
 		if(elem[4] == "on",
 			{hangingNotes.put(elem[1], elem)},
