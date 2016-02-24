@@ -59,7 +59,7 @@ banks = [tlBanks, trBanks, blBanks, brBanks];
 k = banks;
 bankSet = Set.new();
 bankSet.addAll(banks.flatten(1));
-bankMap = Dictionary.new(); //midiNote -> [bankInd, bankChan, isOn, loopTask/nil, loopString]
+bankMap = Dictionary.new(); //midiNote -> [bankInd, bankChan, isOn, loopTask/nil, loopString] todo: add algMelodyTask
 f = bankMap;
 (0..3).do({|i| (0..3).do({|j|
 	//launchpadOut.control(0, j, color1[i]);
@@ -318,6 +318,7 @@ c = {|vel, note, chan, port|
 		if(recordingState == 3,
 			{
 				//save the recorded buffer to the appropriate bank
+				//todo: stop and free the existing task in this bank
 				bankMap[note][2] = true;
 				bankMap[note][3] = tempLoopTask;
 				bankMap[note][4] = note + tempLoopString + recordingStartBeat;
@@ -328,6 +329,11 @@ c = {|vel, note, chan, port|
 			{
 				var thisBank = bankMap[note];
 				if(thisBank[3] != nil, {
+					//if algsList.size > 0, make OSC call to python alg module
+					//args - algsList, inst chanel, bank numner, loopString
+					//set recivedAlgTask[chanInd][bankNum] = null
+					//if the python func crashes, this remains null and can be checked for
+
 					tempoClock.sched(tempoClock.timeToNextBeat, {
 						if(thisBank[2].not,
 							{
@@ -343,7 +349,7 @@ c = {|vel, note, chan, port|
 									})
 								});});
 								midiOut.allNotesOff(thisBank[1]);
-								thisBank[3].start;
+								thisBank[3].start; //todo: if algLooping, start algMelodyTask instead
 								thisBank[2] = true;
 								playingBanks.add(note);
 							},
@@ -367,6 +373,7 @@ c = {|vel, note, chan, port|
 		launchpadOut.control(0, controlChanButton, color1[controlChanInd]);
 	});
 	if(arrowButtons.includes(note) && (vel == 127), {
+		//todo: note off all for that instrument
 		var ind = controlChanInd;
 		if(note == up, {transposes[ind] = transposes[ind] - 4});
 		if(note == down, {transposes[ind] = transposes[ind] + 4});
@@ -374,8 +381,28 @@ c = {|vel, note, chan, port|
 		if(note == left, {transposes[ind] = transposes[ind] - 1});
 		setPadLights.(padsByChannel[ind], color1[ind], color2[ind], ind);
 	});
+	//MULTIPLE ALG BUTTONS CAN BE HELD DOWN
+	//THEIR ORDER WILL SPECIFY A "pipeline" of transformations
+	//if alg button, add/remove from list depending on button up/down
 };
 MIDIFunc.cc(c, nil, nil, launchPad.uid);
+
+//todo: write OSC hanlder for result from python alg
+//get - instChannel, bank number, loopString
+//set recivedAlgTask[chanInd][bankNum] = createTask.(loopString)
+
+
+/*
+python module
+
+class AlgResponder:
+- algsList[] - a list of algs that takes a loopString and returns a loopString (default is identity function)
+  the elements of this list are what will be replaced with custom functions when live coding
+- an oscHandler that applies algslist in order specified by oscAlgsList argument and
+  returns the final loop string (along with chanInd and bankNum)
+
+
+*/
 
 resetRecordingState = {
 	recordingMetronome = false;
