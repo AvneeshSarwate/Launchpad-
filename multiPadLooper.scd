@@ -341,7 +341,7 @@ c = {|vel, note, chan, port|
 					//if the python func crashes, this remains null and can be checked for
 					if(algOrderList.size > 0, {
 						pythonOSCport.sendMsg("/algRequest",  thisBank[1], thisBank[0],
-							roots[thisBank[1]], scales[thisBank[0]], thisBank[4])
+							roots[thisBank[1]], scales[thisBank[0]].join(","), thisBank[4])
 					});
 
 					tempoClock.sched(tempoClock.timeToNextBeat, {
