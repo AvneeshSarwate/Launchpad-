@@ -1,5 +1,5 @@
 (
-var launchpadOut, padTL, padBL, padTR, padBR, colorBL1, colorBR1, colorTL1, colorTR1, colorBL2, colorBR2, colorTL2, colorTR2, colorON, pads, padMap, madePadList, scales, roots, padOn, padOff, setPadLights, transposes, makePadList, indToNote_, indToNote, midiOut, launchPad, tempoClock, interruptLoopButtons, controlChanInd, tapTempoSetButton, tapTempoToggle, recordButton, lastTap, playMetronome, recordingMetronome, metronomeFunc, preRecordCount, preRecordLength, recordBuffer, color1, tlBanks, trBanks, blBanks, brBanks, banks, bankMap, recordingState, bankSet, bankToSaveTo, bankToRecording, recordColor, tempLoopTask, tempLoopString, createRecordedTask, playingBanks, metronomeFlashTask, recordingInterim, resetRecordingState, interruptLooping, controlChanButton, arrowButtons, color2, up, down, left, right, padsByChannel, recordingStartBeat, quantize;
+var launchpadOut, padTL, padBL, padTR, padBR, colorBL1, colorBR1, colorTL1, colorTR1, colorBL2, colorBR2, colorTL2, colorTR2, colorON, pads, padMap, madePadList, scales, roots, padOn, padOff, setPadLights, transposes, makePadList, indToNote_, indToNote, midiOut, launchPad, tempoClock, interruptLoopButtons, controlChanInd, tapTempoSetButton, tapTempoToggle, recordButton, lastTap, playMetronome, recordingMetronome, metronomeFunc, preRecordCount, preRecordLength, recordBuffer, color1, tlBanks, trBanks, blBanks, brBanks, banks, bankMap, recordingState, bankSet, bankToSaveTo, bankToRecording, recordColor, tempLoopTask, tempLoopString, createRecordedTask, playingBanks, metronomeFlashTask, recordingInterim, resetRecordingState, interruptLooping, controlChanButton, arrowButtons, color2, up, down, left, right, padsByChannel, recordingStartBeat, quantize, algOrderList, pythonOSCport, algResponseHandler, algButtons;
 
 MIDIClient.init;
 MIDIIn.connectAll;
@@ -7,6 +7,9 @@ launchpadOut = MIDIOut.newByName("Launchpad Pro", "Standalone Port");
 launchpadOut.latency = 0;
 midiOut = MIDIOut.newByName("IAC Driver", "Bus 1");
 midiOut.latency = 0;
+pythonOSCport = NetAddr("localhost", 13371);
+
+algButtons = [95, 96, 97, 98];
 
 a = [1, 2, 3, 4];
 b = [5, 6, 7, 8];
@@ -25,6 +28,8 @@ makePadList = {|n1, n2, chan|
 	})});
 	lis
 };
+
+algOrderList = List.new();
 
 recordBuffer = List.new(200);
 
@@ -59,11 +64,12 @@ banks = [tlBanks, trBanks, blBanks, brBanks];
 k = banks;
 bankSet = Set.new();
 bankSet.addAll(banks.flatten(1));
-bankMap = Dictionary.new(); //midiNote -> [bankInd, bankChan, isOn, loopTask/nil, loopString] todo: add algMelodyTask
+//midiNote -> [bankInd, bankChan, isOn, loopTask/nil, loopString, algMelodyTask, algMelodyString]
+bankMap = Dictionary.new();
 f = bankMap;
 (0..3).do({|i| (0..3).do({|j|
 	//launchpadOut.control(0, j, color1[i]);
-	bankMap.put(banks[i][j], [j, i, false, nil, nil]); //TODO: reverse i,j here and everywhere else
+	bankMap.put(banks[i][j], [j, i, false, nil, nil, nil, nil]); //TODO: reverse i,j here and everywhere else
 })});
 bankSet.do({|i| launchpadOut.control(0, i, 0)});
 playingBanks = Set.new();
@@ -333,6 +339,10 @@ c = {|vel, note, chan, port|
 					//args - algsList, inst chanel, bank numner, loopString
 					//set recivedAlgTask[chanInd][bankNum] = null
 					//if the python func crashes, this remains null and can be checked for
+					if(algOrderList.size > 0, {
+						pythonOSCport.sendMsg("/algRequest",  thisBank[1], thisBank[0],
+							roots[thisBank[1]], scales[thisBank[0]], thisBank[4])
+					});
 
 					tempoClock.sched(tempoClock.timeToNextBeat, {
 						if(thisBank[2].not,
@@ -384,12 +394,24 @@ c = {|vel, note, chan, port|
 	//MULTIPLE ALG BUTTONS CAN BE HELD DOWN
 	//THEIR ORDER WILL SPECIFY A "pipeline" of transformations
 	//if alg button, add/remove from list depending on button up/down
+	if(algButtons.includes(note), {
+		if(vel == 127,
+			{algOrderList.add(note-95)},
+			{algOrderList.remove(algOrderList.indexOf(note-95))}
+		)
+	});
 };
 MIDIFunc.cc(c, nil, nil, launchPad.uid);
 
 //todo: write OSC hanlder for result from python alg
 //get - instChannel, bank number, loopString
 //set recivedAlgTask[chanInd][bankNum] = createTask.(loopString)
+algResponseHandler = {|msg, time, addr, recvPort|
+	"ALG RESPONSE".postln;
+	msg.postln;
+};
+
+OSCFunc(algResponseHandler, "/algResponse");
 
 
 /*
@@ -403,7 +425,6 @@ class AlgResponder:
 
 
 */
-
 resetRecordingState = {
 	recordingMetronome = false;
 	recordingState = 0;
