@@ -226,7 +226,7 @@ quantize = {|oldRecBuf, quantDivArray, startBeat, endBeat|
 	(recBuf.size-1..1).do({|i| recBuf[i][0] = recBuf[i][0] - recBuf[i-1][0]});
 	recBuf[0][0] = recBuf[0][0] - startBeat;
 
-	recBuf.add([timeAfterLastHit]);
+	recBuf.add([timeAfterLastHit, 0, 0, 0, "timeAfterLastHit"]); //xtra vals to simlpify save/load serialization
 
 	"EXIT QUANTIZE".postln;
 	recBuf;
@@ -414,6 +414,16 @@ MIDIFunc.cc(c, nil, nil, launchPad.uid);
 //get - instChannel, bank number, loopString
 //set recivedAlgTask[chanInd][bankNum] = createTask.(loopString)
 algResponseHandler = {|msg, time, addr, recvPort|
+	var line = msg[2].asString;
+	var lineSplit = line.split($ );
+	var key = lineSplit[0].asInteger;
+	var startBeat = lineSplit[2].asFloat;
+	var recBuf = lineSplit[1].split($-).collect({|hitString|
+		var sp = hitString.split($,);
+		[sp[0].asFloat, sp[1].asInt, sp[2].asInt, sp[3].asInt, sp[4]]
+	});
+	//recBuf.sort({|a, b| a[0] < b[0]});
+	recBuf.do({|hit| hit.postln});
 	"ALG RESPONSE".postln;
 	msg.postln;
 };
