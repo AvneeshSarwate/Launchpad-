@@ -158,6 +158,7 @@ quantize = {|recBuf, quantDivArray, startBeat|
 	var currentBeat = 0;
 	var listsPerBeat = List.new();
 	var quantizedHits = List.new();
+	var timeAfterLastHit;
 	listsPerBeat.add(List.new());
 	recBuf.do({|hit| [hit[0], startBeat].postln; if(hit[0] < startBeat, {hit[0] = startBeat}) });
 	"LOG1".postln;
@@ -196,6 +197,19 @@ quantize = {|recBuf, quantDivArray, startBeat|
 	//TOGGLE QUANTIZATION HERE
 	//quantizedHits.inject([], _++_);
 	recBuf;
+
+	timeAfterLastHit = (recBuf[recBuf.size-1][0].ceil - recBuf[recBuf.size-1][0]);
+
+
+	recBuf.do({|hit| if(true/*hit[4] == "on"*/, {["HIT TIME", hit[4], hit[0]].postln})});
+
+	(recBuf.size-1..1).do({|i| recBuf[i][0] = recBuf[i][0] - recBuf[i-1][0]});
+	recBuf[0][0] = recBuf[0][0] - startBeat;
+
+	recBuf.add([timeAfterLastHit])
+
+	//recBuf.do({|hit| ["Duration TIll", hit[4], hit[0]].postln});
+	//["time after last", timeAfterLastHit].postln;
 };
 
 
@@ -206,43 +220,13 @@ createRecordedTask = {|oldRecBuf, loopStartBeat|
 	startBeat = loopStartBeat;//recBuf[0][0].floor;
 	quantLevels = [4, 6];
 
-	/*recBuf.do({|hit|
-		if(hit[0] < startBeat,
-			{hit[0] = startBeat},
-			//TODO: alternative - quantaize to 4ths or 6ths, chose based on minimum error (can change per beat)
-			{hit[0] = hit[0].floor + ((hit[0]%1 * 6).round / 6)}
-		);
-	});*/
-	["SIZE PRE QUANT", recBuf.size].postln;
-	recBuf = quantize.(recBuf, quantLevels, startBeat);
-	["SIZE POST QUANT", recBuf.size].postln;
-	timeAfterLastHit = (recBuf[recBuf.size-1][0].ceil - recBuf[recBuf.size-1][0]);
-
 	//TODO: handle cases where multiple inst hits in a recBuf, or when there's no noteOns recorded
 	chan = recBuf[0][3];
 	midiOut.allNotesOff(chan);
-	hangingNotes = Dictionary.new();
 
-	//todo: something about this is still leavning notes on at the end of a loop
-	recBuf.do({|elem|
-		if(elem[4] == "on",
-			{hangingNotes.put(elem[1], elem)},
-			{hangingNotes.removeAt(elem[1])})
-	});
-	endBeat = recBuf[recBuf.size-1][0].floor;
-	hangingNotes.keys.do({|elem|
-		var newHit = Array.newFrom(hangingNotes[elem]);
-		newHit[0] = endBeat + 0.9999;
-		recBuf.add(newHit);
-	});
-
-	recBuf.do({|hit| if(true/*hit[4] == "on"*/, {["HIT TIME", hit[4], hit[0]].postln})});
-
-	(recBuf.size-1..1).do({|i| recBuf[i][0] = recBuf[i][0] - recBuf[i-1][0]});
-	recBuf[0][0] = recBuf[0][0] - startBeat;
-
-	//recBuf.do({|hit| ["Duration TIll", hit[4], hit[0]].postln});
-	//["time after last", timeAfterLastHit].postln;
+	["SIZE PRE QUANT", recBuf.size].postln;
+	recBuf = quantize.(recBuf, quantLevels, startBeat);
+	["SIZE POST QUANT", recBuf.size].postln;
 
 	newTask = Task({
 		var ind = 0;
@@ -257,7 +241,7 @@ createRecordedTask = {|oldRecBuf, loopStartBeat|
 			});
 			ind = ind+1;
 
-			if(ind == recBuf.size, {timeAfterLastHit.wait});
+			if(ind == recBuf.size, {midiOut.allNotesOff(recBuf[0][3])});
 			ind = ind%recBuf.size;
 		}.loop;
 	}, tempoClock);
@@ -520,7 +504,8 @@ file.putString(lines.join("\n"));
 file.close;
 5
 )
-
+"5,6,5,3,2,8,5,4,3".split($,)
+[ 5, 6, 5, 3, 2, 8, 5, 4, 3 ].join(",")
 (
 var file = File.open("~/testFilename4.txt".standardizePath, "rb");
 var fileStr = file.readAllString;
