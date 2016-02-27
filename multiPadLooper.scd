@@ -1,5 +1,5 @@
 (
-var launchpadOut, padTL, padBL, padTR, padBR, colorBL1, colorBR1, colorTL1, colorTR1, colorBL2, colorBR2, colorTL2, colorTR2, colorON, pads, padMap, madePadList, scales, roots, padOn, padOff, setPadLights, transposes, makePadList, indToNote_, indToNote, midiOut, launchPad, tempoClock, interruptLoopButtons, controlChanInd, tapTempoSetButton, tapTempoToggle, recordButton, lastTap, playMetronome, recordingMetronome, metronomeFunc, preRecordCount, preRecordLength, recordBuffer, color1, tlBanks, trBanks, blBanks, brBanks, banks, bankMap, recordingState, bankSet, bankToSaveTo, bankToRecording, recordColor, tempLoopTask, tempLoopString, createRecordedTask, playingBanks, metronomeFlashTask, recordingInterim, resetRecordingState, interruptLooping, controlChanButton, arrowButtons, color2, up, down, left, right, padsByChannel, recordingStartBeat, recordingEndBeat, truncateLoop, quantize, algOrderList, pythonOSCport, algResponseHandler, algButtons;
+var launchpadOut, padTL, padBL, padTR, padBR, colorBL1, colorBR1, colorTL1, colorTR1, colorBL2, colorBR2, colorTL2, colorTR2, colorON, pads, padMap, madePadList, scales, roots, padOn, padOff, setPadLights, transposes, makePadList, indToNote_, indToNote, midiOut, launchPad, tempoClock, interruptLoopButtons, controlChanInd, tapTempoSetButton, tapTempoToggle, recordButton, lastTap, playMetronome, recordingMetronome, metronomeFunc, preRecordCount, preRecordLength, recordBuffer, color1, tlBanks, trBanks, blBanks, brBanks, banks, bankMap, recordingState, bankSet, bankToSaveTo, bankToRecording, recordColor, tempLoopTask, tempLoopString, createRecordedTask, playingBanks, metronomeFlashTask, recordingInterim, resetRecordingState, interruptLooping, controlChanButton, arrowButtons, color2, up, down, left, right, padsByChannel, recordingStartBeat, recordingEndBeat, truncateLoop, quantize, algOrderList, pythonOSCport, algResponseHandler, algButtons, quantizationLevels;
 
 MIDIClient.init;
 MIDIIn.connectAll;
@@ -8,6 +8,13 @@ launchpadOut.latency = 0;
 midiOut = MIDIOut.newByName("IAC Driver", "Bus 1");
 midiOut.latency = 0;
 pythonOSCport = NetAddr("localhost", 13371);
+
+
+//OPTIONS
+preRecordLength = 4;
+truncateLoop = true;
+quantizationLevels = [4, 6];
+
 
 algButtons = [95, 96, 97, 98];
 
@@ -151,7 +158,7 @@ tempLoopString = nil;
 //TODO: alternative - quantaize to 4ths or 6ths, chose based on minimum error (can change per beat)
 //{hit[0] = hit[0].floor + ((hit[0]%1 * 6).round / 6)}
 //NOTE - translates hitTime -> duration-before-hit for each beat
-quantize = {|recBuf, quantDivArray, startBeat, endBeat|
+quantize = {|oldRecBuf, quantDivArray, startBeat, endBeat|
 
 	//divide array into hits-per-beat
 	//apply calc-error-for-hits-and-div
@@ -160,6 +167,7 @@ quantize = {|recBuf, quantDivArray, startBeat, endBeat|
 	var listsPerBeat = List.new();
 	var quantizedHits = List.new();
 	var hangingNotes = Set.new();
+	var recBuf = List.newFrom(oldRecBuf);
 	var timeAfterLastHit;
 
 	listsPerBeat.add(List.new());
@@ -218,27 +226,20 @@ quantize = {|recBuf, quantDivArray, startBeat, endBeat|
 	(recBuf.size-1..1).do({|i| recBuf[i][0] = recBuf[i][0] - recBuf[i-1][0]});
 	recBuf[0][0] = recBuf[0][0] - startBeat;
 
-	recBuf.add([timeAfterLastHit])
+	recBuf.add([timeAfterLastHit]);
 
+	"EXIT QUANTIZE".postln;
+	recBuf;
 	//recBuf.do({|hit| ["Duration TIll", hit[4], hit[0]].postln});
 	//["time after last", timeAfterLastHit].postln;
 };
 
 
-createRecordedTask = {|oldRecBuf, loopStartBeat, endBeat|
-	var startBeat, timeAfterLastHit, recBuf, newTask, hangingNotes, chan, quantLevels, bestQuantLev;
+createRecordedTask = {|oldRecBuf|
+	var startBeat, timeAfterLastHit, recBuf, newTask, chan;
 
 	recBuf = List.newFrom(oldRecBuf);
-	startBeat = loopStartBeat;//recBuf[0][0].floor;
-	quantLevels = [4, 6];
-
-	//TODO: handle cases where multiple inst hits in a recBuf, or when there's no noteOns recorded
 	chan = recBuf[0][3];
-	midiOut.allNotesOff(chan);
-
-	["SIZE PRE QUANT", recBuf.size].postln;
-	recBuf = quantize.(recBuf, quantLevels, startBeat, endBeat);
-	["SIZE POST QUANT", recBuf.size].postln;
 
 	newTask = Task({
 		var ind = 0;
@@ -262,9 +263,7 @@ createRecordedTask = {|oldRecBuf, loopStartBeat, endBeat|
 };
 r = createRecordedTask;
 
-//OPTIONS
-preRecordLength = 4;
-truncateLoop = true;
+
 
 //TODO: move variable instations to near the functions that use them
 tempoClock = TempoClock.new(1);
@@ -311,12 +310,20 @@ c = {|vel, note, chan, port|
 			resetRecordingState.();
 		});
 		if(recordingState == 2, {
+			var recBuf;
 			recordingState = 3;
 			preRecordCount = 0;
 			recordingMetronome = false;
 			recordingEndBeat = tempoClock.beats.ceil;
-			tempLoopString = recordBuffer.collect({|item| item.join(",")}).join("-");
-			tempLoopTask = createRecordedTask.(recordBuffer, recordingStartBeat, recordingEndBeat);
+
+			//TODO: handle cases where multiple inst hits in a recBuf, or when there's no noteOns recorded
+			chan = recordBuffer[0][3];
+			midiOut.allNotesOff(chan);
+
+			recBuf = quantize.(recordBuffer, quantizationLevels, recordingStartBeat, recordingEndBeat);
+
+			tempLoopString = recBuf.collect({|item| item.join(",")}).join("-");
+			tempLoopTask = createRecordedTask.(recBuf);
 			tempoClock.sched(tempoClock.timeToNextBeat, {tempLoopTask.start; nil;});
 		});
 	});
