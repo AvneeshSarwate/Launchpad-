@@ -1,5 +1,5 @@
 (
-var launchpadOut, padTL, padBL, padTR, padBR, colorBL1, colorBR1, colorTL1, colorTR1, colorBL2, colorBR2, colorTL2, colorTR2, colorON, pads, padMap, madePadList, scales, roots, padOn, padOff, setPadLights, transposes, makePadList, indToNote_, indToNote, midiOut, launchPad, tempoClock, interruptLoopButtons, controlChanInd, tapTempoSetButton, tapTempoToggle, recordButton, lastTap, playMetronome, recordingMetronome, metronomeFunc, preRecordCount, preRecordLength, recordBuffer, color1, tlBanks, trBanks, blBanks, brBanks, banks, bankMap, recordingState, bankSet, bankToSaveTo, bankToRecording, recordColor, tempLoopTask, tempLoopString, createRecordedTask, playingBanks, metronomeFlashTask, recordingInterim, resetRecordingState, interruptLooping, controlChanButton, arrowButtons, color2, up, down, left, right, padsByChannel, recordingStartBeat, quantize, algOrderList, pythonOSCport, algResponseHandler, algButtons;
+var launchpadOut, padTL, padBL, padTR, padBR, colorBL1, colorBR1, colorTL1, colorTR1, colorBL2, colorBR2, colorTL2, colorTR2, colorON, pads, padMap, madePadList, scales, roots, padOn, padOff, setPadLights, transposes, makePadList, indToNote_, indToNote, midiOut, launchPad, tempoClock, interruptLoopButtons, controlChanInd, tapTempoSetButton, tapTempoToggle, recordButton, lastTap, playMetronome, recordingMetronome, metronomeFunc, preRecordCount, preRecordLength, recordBuffer, color1, tlBanks, trBanks, blBanks, brBanks, banks, bankMap, recordingState, bankSet, bankToSaveTo, bankToRecording, recordColor, tempLoopTask, tempLoopString, createRecordedTask, playingBanks, metronomeFlashTask, recordingInterim, resetRecordingState, interruptLooping, controlChanButton, arrowButtons, color2, up, down, left, right, padsByChannel, recordingStartBeat, recordingEndBeat, truncateLoop, quantize, algOrderList, pythonOSCport, algResponseHandler, algButtons;
 
 MIDIClient.init;
 MIDIIn.connectAll;
@@ -150,7 +150,8 @@ tempLoopString = nil;
 
 //TODO: alternative - quantaize to 4ths or 6ths, chose based on minimum error (can change per beat)
 //{hit[0] = hit[0].floor + ((hit[0]%1 * 6).round / 6)}
-quantize = {|recBuf, quantDivArray, startBeat|
+//NOTE - translates hitTime -> duration-before-hit for each beat
+quantize = {|recBuf, quantDivArray, startBeat, endBeat|
 
 	//divide array into hits-per-beat
 	//apply calc-error-for-hits-and-div
@@ -158,7 +159,9 @@ quantize = {|recBuf, quantDivArray, startBeat|
 	var currentBeat = 0;
 	var listsPerBeat = List.new();
 	var quantizedHits = List.new();
+	var hangingNotes = Set.new();
 	var timeAfterLastHit;
+
 	listsPerBeat.add(List.new());
 	recBuf.do({|hit| [hit[0], startBeat].postln; if(hit[0] < startBeat, {hit[0] = startBeat}) });
 	"LOG1".postln;
@@ -195,11 +198,20 @@ quantize = {|recBuf, quantDivArray, startBeat|
 
 	//TODO - something still messed up with long held notes
 	//TOGGLE QUANTIZATION HERE
-	//quantizedHits.inject([], _++_);
+	//recBuf = quantizedHits.inject([], _++_);
 	recBuf;
 
-	timeAfterLastHit = (recBuf[recBuf.size-1][0].ceil - recBuf[recBuf.size-1][0]);
 
+	recBuf.do({|elem|
+		if(elem[4] == "on",
+			{hangingNotes.add(elem[1])},
+			{hangingNotes.remove(elem[1])})
+	});
+
+	if((hangingNotes.size > 0) || truncateLoop.not,
+		{timeAfterLastHit = endBeat - recBuf[recBuf.size-1][0]},
+		{timeAfterLastHit = (recBuf[recBuf.size-1][0].ceil - recBuf[recBuf.size-1][0])}
+	);
 
 	recBuf.do({|hit| if(true/*hit[4] == "on"*/, {["HIT TIME", hit[4], hit[0]].postln})});
 
@@ -213,8 +225,8 @@ quantize = {|recBuf, quantDivArray, startBeat|
 };
 
 
-createRecordedTask = {|oldRecBuf, loopStartBeat|
-	var startBeat, endBeat, timeAfterLastHit, recBuf, newTask, hangingNotes, chan, quantLevels, bestQuantLev;
+createRecordedTask = {|oldRecBuf, loopStartBeat, endBeat|
+	var startBeat, timeAfterLastHit, recBuf, newTask, hangingNotes, chan, quantLevels, bestQuantLev;
 
 	recBuf = List.newFrom(oldRecBuf);
 	startBeat = loopStartBeat;//recBuf[0][0].floor;
@@ -225,7 +237,7 @@ createRecordedTask = {|oldRecBuf, loopStartBeat|
 	midiOut.allNotesOff(chan);
 
 	["SIZE PRE QUANT", recBuf.size].postln;
-	recBuf = quantize.(recBuf, quantLevels, startBeat);
+	recBuf = quantize.(recBuf, quantLevels, startBeat, endBeat);
 	["SIZE POST QUANT", recBuf.size].postln;
 
 	newTask = Task({
@@ -250,6 +262,10 @@ createRecordedTask = {|oldRecBuf, loopStartBeat|
 };
 r = createRecordedTask;
 
+//OPTIONS
+preRecordLength = 4;
+truncateLoop = true;
+
 //TODO: move variable instations to near the functions that use them
 tempoClock = TempoClock.new(1);
 t = tempoClock;
@@ -263,7 +279,6 @@ playMetronome = false;
 recordingMetronome = false;
 recordingInterim = false;
 preRecordCount = 0;
-preRecordLength = 4;
 //0: not recording, 1: "record" hit, 2: bank specified, 3: pre record metronome, 4: actually recording notes
 recordingState = 0;
 bankToSaveTo = 0;
@@ -299,8 +314,9 @@ c = {|vel, note, chan, port|
 			recordingState = 3;
 			preRecordCount = 0;
 			recordingMetronome = false;
+			recordingEndBeat = tempoClock.beats.ceil;
 			tempLoopString = recordBuffer.collect({|item| item.join(",")}).join("-");
-			tempLoopTask = createRecordedTask.(recordBuffer, recordingStartBeat);
+			tempLoopTask = createRecordedTask.(recordBuffer, recordingStartBeat, recordingEndBeat);
 			tempoClock.sched(tempoClock.timeToNextBeat, {tempLoopTask.start; nil;});
 		});
 	});
