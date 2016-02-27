@@ -366,7 +366,8 @@ c = {|vel, note, chan, port|
 									})
 								});});
 								midiOut.allNotesOff(thisBank[1]);
-								thisBank[3].start; //todo: if algLooping, start algMelodyTask instead
+								//todo: if algLooping, start algMelodyTask instead
+								if(thisBank[5].isNil, {thisBank[3].start}, {thisBank[5].start});
 								thisBank[2] = true;
 								playingBanks.add(note);
 							},
@@ -374,6 +375,10 @@ c = {|vel, note, chan, port|
 								midiOut.allNotesOff(thisBank[1]);
 								"TURNING OFF".postln;
 								thisBank[3].stop;
+								thisBank[5].stop;
+								thisBank[5].free;
+								thisBank[5] = nil;
+								thisBank[6] = nil;
 								thisBank[2] = false;
 								launchpadOut.control(0, note, color1[thisBank[1]]);
 								playingBanks.remove(note);
@@ -413,6 +418,7 @@ MIDIFunc.cc(c, nil, nil, launchPad.uid);
 //todo: write OSC hanlder for result from python alg
 //get - instChannel, bank number, loopString
 //set recivedAlgTask[chanInd][bankNum] = createTask.(loopString)
+//recived values - chanInd, bankNum, loopStr
 algResponseHandler = {|msg, time, addr, recvPort|
 	var line = msg[2].asString;
 	var lineSplit = line.split($ );
@@ -422,8 +428,13 @@ algResponseHandler = {|msg, time, addr, recvPort|
 		var sp = hitString.split($,);
 		[sp[0].asFloat, sp[1].asInt, sp[2].asInt, sp[3].asInt, sp[4]]
 	});
+	var algTask;
 	//recBuf.sort({|a, b| a[0] < b[0]});
 	recBuf.do({|hit| hit.postln});
+
+	algTask = createRecordedTask.(recBuf);
+	bankMap[key][5] = algTask;
+	bankMap[key][6] = line;
 	"ALG RESPONSE".postln;
 	msg.postln;
 };

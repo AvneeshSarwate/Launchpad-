@@ -19,7 +19,8 @@ class FH:
 	def handleAlgRequest(self, addr, tags, stuff, source):
 		msg = OSC.OSCMessage()
 		msg.setAddress("/algResponse")
-		msg.append("yo got it")
+		msg.append(int(stuff[0]))
+		msg.append(int(stuff[1]))
 		print "got from supercollider"
 		print stuff
 		hitList, key, startBeat = self.stringToHitList(stuff[4])
