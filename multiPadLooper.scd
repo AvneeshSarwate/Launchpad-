@@ -11,7 +11,7 @@ pythonOSCport = NetAddr("localhost", 13371);
 
 
 //OPTIONS
-preRecordLength = 4;
+preRecordLength = 0;
 truncateLoop = true;
 quantizationLevels = [4, 6];
 
@@ -83,8 +83,8 @@ playingBanks = Set.new();
 
 //define scales and roots
 scales = [
-	[0, 2, 3, 5, 7, 10], //TL
-	[0, 3, 5, 7, 10], //TR
+	[0, 2, 3, 5, 7, 8, 10], //TL
+	[0, 2, 3, 5, 7, 8, 10], //TR
 	[0, 2, 3, 5, 7, 8, 10], //BL
 	[0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11], //BR
 ];
@@ -254,6 +254,7 @@ createRecordedTask = {|oldRecBuf|
 			});
 			ind = ind+1;
 
+			//TODO: this cuts off notes when loops are superimposed on same instrument
 			if(ind == recBuf.size, {midiOut.allNotesOff(recBuf[0][3])});
 			ind = ind%recBuf.size;
 		}.loop;
