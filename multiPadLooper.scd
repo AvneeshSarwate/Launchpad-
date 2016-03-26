@@ -1,5 +1,5 @@
 (
-var launchpadOut, padTL, padBL, padTR, padBR, colorBL1, colorBR1, colorTL1, colorTR1, colorBL2, colorBR2, colorTL2, colorTR2, colorON, pads, padMap, madePadList, scales, roots, padOn, padOff, setPadLights, transposes, makePadList, indToNote_, indToNote, midiOut, launchPad, tempoClock, interruptLoopButtons, controlChanInd, tapTempoSetButton, tapTempoToggle, recordButton, lastTap, playMetronome, recordingMetronome, metronomeFunc, preRecordCount, preRecordLength, recordBuffer, color1, tlBanks, trBanks, blBanks, brBanks, banks, bankMap, recordingState, bankSet, bankToSaveTo, bankToRecording, recordColor, tempLoopTask, tempLoopString, createRecordedTask, playingBanks, metronomeFlashTask, recordingInterim, resetRecordingState, interruptLooping, controlChanButton, arrowButtons, color2, up, down, left, right, padsByChannel, recordingStartBeat, recordingEndBeat, truncateLoop, quantize, algOrderList, pythonOSCport, algResponseHandler, algButtons, quantizationLevels;
+var launchpadOut, padTL, padBL, padTR, padBR, colorBL1, colorBR1, colorTL1, colorTR1, colorBL2, colorBR2, colorTL2, colorTR2, colorON, pads, padMap, madePadList, scales, roots, padOn, padOff, setPadLights, transposes, makePadList, indToNote_, indToNote, midiOut, launchPad, tempoClock, interruptLoopButtons, controlChanInd, tapTempoSetButton, tapTempoToggle, recordButton, lastTap, playMetronome, recordingMetronome, metronomeFunc, preRecordCount, preRecordLength, recordBuffer, color1, tlBanks, trBanks, blBanks, brBanks, banks, bankMap, recordingState, bankSet, bankToSaveTo, bankToRecording, recordColor, tempLoopTask, tempLoopString, createRecordedTask, playingBanks, metronomeFlashTask, recordingInterim, resetRecordingState, interruptLooping, controlChanButton, arrowButtons, color2, up, down, left, right, padsByChannel, recordingStartBeat, recordingEndBeat, truncateLoop, quantize, algOrderList, pythonOSCport, algResponseHandler, algButtons, quantizationLevels, algBanks, liveCodeHandler;
 
 MIDIClient.init;
 MIDIIn.connectAll;
@@ -80,6 +80,13 @@ f = bankMap;
 })});
 bankSet.do({|i| launchpadOut.control(0, i, 0)});
 playingBanks = Set.new();
+algBanks = List.new();
+
+//chanInd -> [isOn, task, loopString]
+(0..3).do({|i|
+	algBanks.add([false, nil, nil]);
+});
+
 
 //define scales and roots
 scales = [
@@ -329,19 +336,22 @@ c = {|vel, note, chan, port|
 		});
 	});
 	if(bankSet.includes(note) && (vel == 127), {
+		var thisBank = bankMap[note];
 		if(recordingState == 3,
 			{
 				//save the recorded buffer to the appropriate bank
 				//todo: stop and free the existing task in this bank
-				bankMap[note][2] = true;
-				bankMap[note][3] = tempLoopTask;
-				bankMap[note][4] = note + tempLoopString + recordingStartBeat;
-				playingBanks.add(note);
+				thisBank[2] = true;
+				thisBank[3] = tempLoopTask;
+				thisBank[4] = note + tempLoopString + recordingStartBeat;
 
+				pythonOSCport.sendMsg("/saveLoop",  thisBank[1], thisBank[0],
+					roots[thisBank[1]], scales[thisBank[0]].join(","), thisBank[4]);
+
+				playingBanks.add(note);
 				resetRecordingState.();
 			},
 			{
-				var thisBank = bankMap[note];
 				if(thisBank[3] != nil, {
 					//if algsList.size > 0, make OSC call to python alg module
 					//args - algsList, inst chanel, bank numner, loopString
@@ -415,6 +425,27 @@ c = {|vel, note, chan, port|
 	});
 };
 MIDIFunc.cc(c, nil, nil, launchPad.uid);
+
+liveCodeHandler = {|msg, time, addr, recvPort|
+	var line = msg[0].asString;
+	var lineSplit = line.split($ );
+	var chanInd = lineSplit[0].asInteger;
+	var startBeat = lineSplit[2].asFloat;
+	var recBuf = lineSplit[1].split($-).collect({|hitString|
+		var sp = hitString.split($,);
+		[sp[0].asFloat, sp[1].asInt, sp[2].asInt, sp[3].asInt, sp[4]]
+	});
+	var algTask;
+	//recBuf.sort({|a, b| a[0] < b[0]});
+	recBuf.do({|hit| hit.postln});
+	algTask = createRecordedTask.(recBuf);
+	algBanks[chanInd] = [false, algTask, line];
+	tempoClock.sched(tempoClock.timeToNextBeat, {
+		algBanks[chanInd][0] = true;
+		algBanks[chanInd][1].play;
+	});
+};
+OSCFunc(algResponseHandler, "/liveCodeEndpoint");
 
 //todo: write OSC hanlder for result from python alg
 //get - instChannel, bank number, loopString

@@ -13,7 +13,14 @@ class FH:
 		self.serverThread.daemon = False
 		self.serverThread.start()
 
+		n = 4
+
+		self.loops = [[0]*n for i in range(n)]
+		self.scales = [0]*4
+		self.roots = [0]*4
+
 		self.superColliderServer.addMsgHandler("/algRequest", self.handleAlgRequest)
+		self.superColliderServer.addMsgHandler("/saveLoop", self.saveNewLaunchpadLoop)
 
 	#stuff = [chanInd, bankNum, root, scale, loopString] 
 	def handleAlgRequest(self, addr, tags, stuff, source):
@@ -23,12 +30,25 @@ class FH:
 		msg.append(int(stuff[1]))
 		print "got from supercollider"
 		print stuff
-		hitList, key, startBeat = self.stringToHitList(stuff[4])
+		hitList, scale, startBeat = self.stringToHitList(stuff[4])
 		for h in hitList:
 			h[1] += 5
-		msg.append(self.hitListToString(hitList, key, startBeat))
+		msg.append(self.hitListToString(hitList, scale, startBeat))
 		self.superColliderClient.send(msg)
 
+	#stuff = [chanInd, bankNum, root, scale, loopString] 	
+	def saveNewLaunchpadLoop(self, addr, tags, stuff, source):
+		hitList, button, startBeat = self.stringToHitList(stuff[4])
+		chanInd, bankNum = stuff[:2]
+		self.loops[chanInd][bankNum] = hitList
+		self.roots[chanInd] = stuff[2]
+		self.scales[chanInd] = stuff[3].split(",")
+
+	def sendLoop(self, chanInd, loop):
+		msg = OSC.OSCMessage()
+		msg.setAddress("/liveCodeEndpoint")
+		msg.append(self.hitListToString(loop, chanInd))
+		self.superColliderClient.send(msg)
 
 	@staticmethod 
 	def stringToHitList(loopString):
@@ -40,13 +60,13 @@ class FH:
 		return recBuf, lineSplit[0], lineSplit[2]
 
 	@staticmethod
-	def hitListToString(hitList, key, startBeat):
-		return key + " " + "-".join(map(lambda h: ",".join(map(str, h)), hitList)) + " " + startBeat
+	def hitListToString(hitList, button, startBeat):
+		return button + " " + "-".join(map(lambda h: ",".join(map(str, h)), hitList)) + " " + startBeat
 
 	def end(self):
 		self.superColliderServer.close()
 
-
+#TODO: see if scale and startbeat are actually sent over
 def stringToHitList(loopString):
 	lineSplit = loopString.split(" ")
 	startBeat = float(lineSplit[2])
@@ -56,8 +76,8 @@ def stringToHitList(loopString):
 	recBuf = map(splitHit, lineSplit[1].split("-"))
 	return recBuf, lineSplit[0], lineSplit[2]
 
-def hitListToString(hitList, key, startBeat):
-	return key + " " + "-".join(map(lambda h: ",".join(map(str, h)), hitList)) + " " + startBeat
+def hitListToString(hitList, button, startBeat):
+	return button + " " + "-".join(map(lambda h: ",".join(map(str, h)), hitList)) + " " + startBeat
 
 
 
