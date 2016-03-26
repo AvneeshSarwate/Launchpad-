@@ -442,6 +442,7 @@ liveCodeHandler = {|msg, time, addr, recvPort|
 		[sp[0].asFloat, sp[1].asInt, sp[2].asInt, sp[3].asInt, sp[4]]
 	});
 	var algTask;
+	"GOT THE LOOP".postln;
 	//recBuf.sort({|a, b| a[0] < b[0]});
 	recBuf.do({|hit| hit.postln});
 	algTask = createRecordedTask.(recBuf);
@@ -451,7 +452,7 @@ liveCodeHandler = {|msg, time, addr, recvPort|
 		algBanks[chanInd][1].play;
 	});
 };
-OSCFunc(algResponseHandler, "/liveCodeEndpoint");
+OSCFunc(liveCodeHandler, "/liveCodeEndpoint");
 
 //todo: write OSC hanlder for result from python alg
 //get - instChannel, bank number, loopString
