@@ -433,16 +433,15 @@ c = {|vel, note, chan, port|
 MIDIFunc.cc(c, nil, nil, launchPad.uid);
 
 liveCodeHandler = {|msg, time, addr, recvPort|
-	var line = msg[0].asString;
+	var line = msg[1].asString;
 	var lineSplit = line.split($ );
 	var chanInd = lineSplit[0].asInteger;
-	var startBeat = lineSplit[2].asFloat;
 	var recBuf = lineSplit[1].split($-).collect({|hitString|
 		var sp = hitString.split($,);
 		[sp[0].asFloat, sp[1].asInt, sp[2].asInt, sp[3].asInt, sp[4]]
 	});
 	var algTask;
-	"GOT THE LOOP".postln;
+
 	//recBuf.sort({|a, b| a[0] < b[0]});
 	recBuf.do({|hit| hit.postln});
 	algTask = createRecordedTask.(recBuf);
@@ -479,7 +478,6 @@ algResponseHandler = {|msg, time, addr, recvPort|
 };
 
 OSCFunc(algResponseHandler, "/algResponse");
-
 
 /*
 python module
