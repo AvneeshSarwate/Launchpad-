@@ -1,5 +1,5 @@
 (
-var launchpadOut, padTL, padBL, padTR, padBR, colorBL1, colorBR1, colorTL1, colorTR1, colorBL2, colorBR2, colorTL2, colorTR2, colorON, pads, padMap, madePadList, scales, roots, padOn, padOff, setPadLights, transposes, makePadList, indToNote_, indToNote, midiOut, launchPad, tempoClock, interruptLoopButtons, controlChanInd, tapTempoSetButton, tapTempoToggle, recordButton, lastTap, playMetronome, recordingMetronome, metronomeFunc, preRecordCount, preRecordLength, recordBuffer, color1, tlBanks, trBanks, blBanks, brBanks, banks, bankMap, recordingState, bankSet, bankToSaveTo, bankToRecording, recordColor, tempLoopTask, tempLoopString, createRecordedTask, playingBanks, metronomeFlashTask, recordingInterim, resetRecordingState, interruptLooping, controlChanButton, arrowButtons, color2, up, down, left, right, padsByChannel, recordingStartBeat, recordingEndBeat, truncateLoop, quantize, algOrderList, pythonOSCport, algResponseHandler, algButtons, quantizationLevels, algBanks, liveCodeHandler, algLoopButton;
+var launchpadOut, padTL, padBL, padTR, padBR, colorBL1, colorBR1, colorTL1, colorTR1, colorBL2, colorBR2, colorTL2, colorTR2, colorON, pads, padMap, madePadList, scales, roots, padOn, padOff, setPadLights, transposes, makePadList, indToNote_, indToNote, midiOut, launchPad, tempoClock, interruptLoopButtons, controlChanInd, tapTempoSetButton, tapTempoToggle, recordButton, lastTap, playMetronome, recordingMetronome, metronomeFunc, preRecordCount, preRecordLength, recordBuffer, color1, tlBanks, trBanks, blBanks, brBanks, banks, bankMap, recordingState, bankSet, bankToSaveTo, bankToRecording, recordColor, tempLoopTask, tempLoopString, createRecordedTask, playingBanks, metronomeFlashTask, recordingInterim, resetRecordingState, interruptLooping, controlChanButton, arrowButtons, color2, up, down, left, right, padsByChannel, recordingStartBeat, recordingEndBeat, truncateLoop, quantize, algOrderList, pythonOSCport, algResponseHandler, algButtons, quantizationLevels, algBanks, liveCodeHandler, algLoopButton, masterClockOSCport, masterClockTempoHandler;
 
 MIDIClient.init;
 MIDIIn.connectAll;
@@ -8,6 +8,7 @@ launchpadOut.latency = 0;
 midiOut = MIDIOut.newByName("IAC Driver", "Bus 1");
 midiOut.latency = 0;
 pythonOSCport = NetAddr("localhost", 13371);
+masterClockOSCport = NetAddr("localhost", 57120);
 
 
 //OPTIONS
@@ -279,6 +280,8 @@ f = {|msg, time, addr, recvPort|
 	//msg[1] is the new BEAT DURATION (not tempo)
 	tempoClock = TempoClock.new(1/msg[1]);
 	t = tempoClock;
+	tempoClock.beats = 0;
+	tempoClock.schedAbs(1, metronomeFunc);
 };
 OSCFunc(f, "/masterClockBeat").oneShot;
 tapTempoSetButton = 5;
@@ -303,7 +306,7 @@ c = {|vel, note, chan, port|
 	});
 	if((note == tapTempoSetButton) && (vel == 127), {
 		var now = TempoClock.beats;
-		if((now - lastTap) < 2, {tempoClock.tempo = 1/(now-lastTap)});
+		if((now - lastTap) < 2, {masterClockOSCport.sendMsg("/uploadTempo", now - lastTap)});
 		lastTap = now;
 		//TODO - send tap info to master clock
 	});
@@ -469,7 +472,7 @@ algResponseHandler = {|msg, time, addr, recvPort|
 		[sp[0].asFloat, sp[1].asInt, sp[2].asInt, sp[3].asInt, sp[4]]
 	});
 	var algTask;
-	//recBuf.sort({|a, b| a[0] < b[0]});
+	//recBuf.sort({|a, b| a[0] < b[0]});tempoClock.tempo = 1/(now-lastTap)
 	recBuf.do({|hit| hit.postln});
 
 	algTask = createRecordedTask.(recBuf);
@@ -480,6 +483,12 @@ algResponseHandler = {|msg, time, addr, recvPort|
 };
 
 OSCFunc(algResponseHandler, "/algResponse");
+
+//msg[1] is the new BEAT DURATION (not tempo)
+masterClockTempoHandler = {|msg, time, addr, recvPort|
+	tempoClock.tempo = 1/msg[1].asFloat;
+};
+OSCFunc(masterClockTempoHandler, "/masterClockTempo");
 
 /*
 python module
@@ -544,8 +553,7 @@ metronomeFunc = {
 	//["beat", tempoClock.beats, tempoClock.beatDur].postln;
 	1;
 };
-tempoClock.beats = 0;
-tempoClock.schedAbs(1, metronomeFunc);
+
 
 /*
 basic layout
