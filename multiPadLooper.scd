@@ -341,7 +341,7 @@ c = {|vel, note, chan, port|
 		if(recordingState == 3,
 			{
 				//save the recorded buffer to the appropriate bank
-				//todo: stop and free the existing task in this bank
+				//todo bug: stop and free the existing task in this bank
 				thisBank[2] = true;
 				thisBank[3] = tempLoopTask;
 				thisBank[4] = note + tempLoopString + recordingStartBeat;
@@ -378,7 +378,7 @@ c = {|vel, note, chan, port|
 									})
 								});});
 								midiOut.allNotesOff(thisBank[1]);
-								//todo: if algLooping, start algMelodyTask instead
+								//todo: if algLooping, start algMelodyTask instead (no longer relevant?)
 								if(thisBank[5].isNil, {thisBank[3].start}, {thisBank[5].start});
 								thisBank[2] = true;
 								playingBanks.add(note);
@@ -453,10 +453,7 @@ liveCodeHandler = {|msg, time, addr, recvPort|
 };
 OSCFunc(liveCodeHandler, "/liveCodeEndpoint");
 
-//todo: write OSC hanlder for result from python alg
-//get - instChannel, bank number, loopString
-//set recivedAlgTask[chanInd][bankNum] = createTask.(loopString)
-//recived values - chanInd, bankNum, loopStr
+//TODO bug: stop and free task here if it exists
 algResponseHandler = {|msg, time, addr, recvPort|
 	var line = msg[2].asString;
 	var lineSplit = line.split($ );
