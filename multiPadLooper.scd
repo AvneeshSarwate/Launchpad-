@@ -275,8 +275,12 @@ r = createRecordedTask;
 
 
 //TODO: move variable instations to near the functions that use them
-tempoClock = TempoClock.new(1);
-t = tempoClock;
+f = {|msg, time, addr, recvPort|
+	//msg[1] is the new BEAT DURATION (not tempo)
+	tempoClock = TempoClock.new(1/msg[1]);
+	t = tempoClock;
+};
+OSCFunc(f, "/masterClockBeat").oneShot;
 tapTempoSetButton = 5;
 tapTempoToggle = 6;
 recordButton = 7;
@@ -301,6 +305,7 @@ c = {|vel, note, chan, port|
 		var now = TempoClock.beats;
 		if((now - lastTap) < 2, {tempoClock.tempo = 1/(now-lastTap)});
 		lastTap = now;
+		//TODO - send tap info to master clock
 	});
 	if((note == tapTempoToggle) && (vel == 127), {playMetronome = playMetronome.not});
 	if((note == recordButton) && (vel == 127), {
