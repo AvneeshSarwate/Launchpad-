@@ -5,7 +5,7 @@ MIDIClient.init;
 MIDIIn.connectAll;
 launchpadOut = MIDIOut.newByName("Launchpad Pro", "Standalone Port");
 launchpadOut.latency = 0;
-midiOut = MIDIOut.newByName("IAC Driver", "Bus 1");
+midiOut = MIDIOut.newByName("IAC Driver", "Bus 2");
 midiOut.latency = 0;
 pythonOSCport = NetAddr("localhost", 13371);
 masterClockOSCport = NetAddr("localhost", 57120);
@@ -97,7 +97,7 @@ scales = [
 	[0, 2, 3, 5, 7, 8, 10], //BL
 	[0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11], //BR
 ];
-roots = [66, 66, 42, 36];
+roots = [60, 60, 36, 36];
 
 indToNote_ = {|ind, scale, root, trans|
 	root + scale[(ind+trans)%scale.size()] + (((ind+trans) / scale.size).floor * 12);
@@ -278,12 +278,15 @@ r = createRecordedTask;
 //TODO: move variable instations to near the functions that use them
 f = {|msg, time, addr, recvPort|
 	//msg[1] is the new BEAT DURATION (not tempo)
-	tempoClock = TempoClock.new(1/msg[1]);
+	tempoClock = TempoClock.new(1/msg[1], 0);
 	t = tempoClock;
-	tempoClock.beats = 0;
 	tempoClock.schedAbs(1, metronomeFunc);
 };
 OSCFunc(f, "/masterClockBeat").oneShot;
+q = {|msg, time, addr, recvPort|
+	["MULTILOOP BEAT", tempoClock.beats].postln;
+};
+OSCFunc(q, "/masterClockBeat");
 tapTempoSetButton = 5;
 tapTempoToggle = 6;
 recordButton = 7;
@@ -350,6 +353,10 @@ c = {|vel, note, chan, port|
 			{
 				//save the recorded buffer to the appropriate bank
 				//todo bug: stop and free the existing task in this bank
+				if(thisBank[3] != nil, {
+					thisBank[3].stop;
+					thisBank[3].free;
+				});
 				thisBank[2] = true;
 				thisBank[3] = tempLoopTask;
 				thisBank[4] = note + tempLoopString + recordingStartBeat;
@@ -581,7 +588,7 @@ basic layout
 
 
 (
-var file = File("~/testFilename4.txt".standardizePath, "wb");
+var file = File("~/joelLoop.txt".standardizePath, "wb");
 var lines = List.new();
 f.keys.do({|key|
 	if(f[key][4] != nil, {
