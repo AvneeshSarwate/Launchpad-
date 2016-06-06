@@ -1,8 +1,8 @@
 (
-var launchpadOut, padTL, padBL, padTR, padBR, colorBL1, colorBR1, colorTL1, colorTR1, colorBL2, colorBR2, colorTL2, colorTR2, colorON, pads, padMap, madePadList, scales, roots, padOn, padOff, setPadLights, transposes, makePadList, indToNote_, indToNote, midiOut, launchPad, tempoClock, interruptLoopButtons, controlChanInd, tapTempoSetButton, tapTempoToggle, recordButton, lastTap, playMetronome, recordingMetronome, metronomeFunc, preRecordCount, preRecordLength, recordBuffer, color1, tlBanks, trBanks, blBanks, brBanks, banks, bankMap, recordingState, bankSet, bankToSaveTo, bankToRecording, recordColor, tempLoopTask, tempLoopString, createRecordedTask, playingBanks, metronomeFlashTask, recordingInterim, resetRecordingState, interruptLooping, controlChanButton, arrowButtons, color2, up, down, left, right, padsByChannel, recordingStartBeat, recordingEndBeat, truncateLoop, quantize, algOrderList, pythonOSCport, algResponseHandler, algButtons, quantizationLevels, algBanks, liveCodeHandler, algLoopButton, masterClockOSCport, masterClockTempoHandler;
+var launchpadOut, padTL, padBL, padTR, padBR, colorBL1, colorBR1, colorTL1, colorTR1, colorBL2, colorBR2, colorTL2, colorTR2, colorON, pads, padMap, madePadList, scales, roots, padOn, padOff, setPadLights, transposes, makePadList, indToNote_, indToNote, midiOut, launchPad, tempoClock, interruptLoopButtons, controlChanInd, tapTempoSetButton, tapTempoToggle, recordButton, lastTap, playMetronome, recordingMetronome, metronomeFunc, preRecordCount, preRecordLength, recordBuffer, color1, tlBanks, trBanks, blBanks, brBanks, banks, bankMap, recordingState, bankSet, bankToSaveTo, bankToRecording, recordColor, tempLoopTask, tempLoopString, createRecordedTask, playingBanks, metronomeFlashTask, recordingInterim, resetRecordingState, interruptLooping, controlChanButton, arrowButtons, color2, up, down, left, right, padsByChannel, recordingStartBeat, recordingEndBeat, truncateLoop, quantize, algOrderList, pythonOSCport, algResponseHandler, algButtons, quantizationLevels, algBanks, liveCodeHandler, algLoopButton, masterClockOSCport, masterClockTempoHandler, onDeckBuffers, algChannelsInfo, recieveBuffer, startChannel;
 
 //MIDIClient.init;
-MIDIIn.connectAll;
+//MIDIIn.connectAll;
 launchpadOut = MIDIOut.newByName("Launchpad Pro", "Standalone Port");
 launchpadOut.latency = 0;
 midiOut = MIDIOut.newByName("IAC Driver", "Bus 2");
@@ -122,6 +122,11 @@ launchpadOut.control(0, 4, colorBR1);
 controlChanInd = 0;
 controlChanButton = 8;
 launchpadOut.control(0, controlChanButton, color1[controlChanInd]);
+
+onDeckBuffers = List.fill(16, {nil;});
+
+//[task, midiChanInd]
+algChannelsInfo = List.fill(16, {[nil, nil];});
 
 
 //define setPadLights method
@@ -244,7 +249,7 @@ quantize = {|oldRecBuf, quantDivArray, startBeat, endBeat|
 };
 
 
-createRecordedTask = {|oldRecBuf|
+createRecordedTask = {|oldRecBuf, isChannelTask=false, channelInd=0|
 	var startBeat, timeAfterLastHit, recBuf, newTask, chan;
 
 	recBuf = List.newFrom(oldRecBuf);
@@ -262,6 +267,19 @@ createRecordedTask = {|oldRecBuf|
 				if(hit[4] == "off", {midiOut.noteOff(hit[3], hit[1], hit[2])});
 			});
 			ind = ind+1;
+
+			if(isChannelTask, {
+				if(ind == recBuf.size-2, {
+					pythonOSCport.sendMsg("/algRequestUpdate", channelInd);
+				});
+
+				if(ind == recBuf.size-1, {
+					if(onDeckBuffers[channelInd] != nil, {
+						recBuf = onDeckBuffers[channelInd];
+						onDechBuffers[channelInd] = nil;
+					});
+				});
+			});
 
 			//TODO: this cuts off notes when loops are superimposed on same instrument
 			if(ind == recBuf.size, {midiOut.allNotesOff(recBuf[0][3])});
@@ -447,6 +465,51 @@ c = {|vel, note, chan, port|
 };
 MIDIFunc.cc(c, nil, nil, launchPad.uid);
 
+//msg[1] is channel
+//msg[2] is bufferString
+recieveBuffer = {|msg, time, addr, recvPort|
+	var buffer = stringToBuf.(msg[2].asString);
+	onDeckBuffers[msg[1].asInt] = buffer;
+};
+OSCFunc(recieveBuffer, "/algRecieveUpdate");
+
+//msg[1] is channel
+//msg[2] is bufferString
+startChannel = {|msg, time, addr, recvPort|
+	var buffer = stringToBuf.(msg[2].asString);
+	var chanInd = msg[1].asInt;
+	var channelTask = createRecordedTask(buffer, true, chanInd);
+	if(algChannelsInfo[chanInd][0] != nil, {
+		algChannelsInfo[chanInd][0].stop;
+		algChannelsInfo[chanInd][0].free;
+	});
+	algChannelsInfo[chanInd][0] = channelTask;
+	tempoClock.sched(tempoClock.timeToNextBeat, {channelTask.play; nil;});
+};
+OSCFunc(startChannel, "/algStart");
+
+//msg[1] is channel
+stopChannel = {|msg, time, addr, recvPort|
+	var chanInd = msg[1].asInt;
+	tempoClock.sched(tempoClock.timeToNextBeat - 0.05, {
+		if(algChannelsInfo[chanInd][0] != nil, {
+			algChannelsInfo[chanInd][0].stop;
+			algChannelsInfo[chanInd][0].free;
+			algChannelsInfo[chanInd][0] = nil;
+		});
+		midiOut.allNotesOff(algChannelsInfo[chanInd][1]);
+		nil;
+	});
+};
+OSCFunc(startChannel, "/algStop");
+
+stringToBuf = {|melString|
+	melstring.split($-).collect({|hitString|
+		var sp = hitString.split($,);
+		[sp[0].asFloat, sp[1].asInt, sp[2].asInt, sp[3].asInt, sp[4]]
+	});
+};
+
 liveCodeHandler = {|msg, time, addr, recvPort|
 	var line = msg[1].asString;
 	var lineSplit = line.split($ );
@@ -586,6 +649,13 @@ basic layout
 // ================================================================================================
 //FILE SAVE/LOAD
 
+
+(
+var func = {|a, b=5|
+	[a, b].postln;
+};
+func.(1)
+)
 
 (
 var file = File("~/joelLoop.txt".standardizePath, "wb");
