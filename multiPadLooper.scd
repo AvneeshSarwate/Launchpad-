@@ -483,12 +483,19 @@ startChannel = {|msg, time, addr, recvPort|
 	chanInd = msg[1].asInt;
 	channelTask = createRecordedTask.(buffer, true, chanInd);
 	"ALG TASK CREATED".postln;
-	tempoClock.sched(tempoClock.timeToNextBeat - 0.05, {
-		if(algChannelsInfo[chanInd][0] != nil, {
-			algChannelsInfo[chanInd][0].stop;
-			algChannelsInfo[chanInd][0].free;
-			midiOut.allNotesOff(algChannelsInfo[chanInd][1])
-		});
+	if(algChannelsInfo[chanInd][0].isNil.not, {
+		algChannelsInfo[chanInd][0].stop;
+		algChannelsInfo[chanInd][0].free;
+		algChannelsInfo[chanInd][0] = nil;
+		midiOut.allNotesOff(algChannelsInfo[chanInd][1]);
+		//TODO: figure out how to time the "stop" of previous task on channel properly
+		/*var taskInfo = algChannelsInfo[chanInd];
+		tempoClock.sched(tempoClock.timeToNextBeat - 0.05, {
+			taskInfo[0].stop;
+			taskInfo[0].free;
+			midiOut.allNotesOff(taskInfo[1]);
+			["STOP DOUBLE ALG ON CHAN", chanInd].postln;
+		});*/
 	});
 	algChannelsInfo[chanInd][0] = channelTask;
 	algChannelsInfo[chanInd][1] = buffer[0][3];
@@ -504,7 +511,7 @@ stopChannel = {|msg, time, addr, recvPort|
 	chanInd = msg[1].asInt;
 	tempoClock.sched(tempoClock.timeToNextBeat - 0.05, {
 		"ACTUALLY STOPPING CHAN".postln;
-		if(algChannelsInfo[chanInd][0] != nil, {
+		if(algChannelsInfo[chanInd][0].isNil.not, {
 			algChannelsInfo[chanInd][0].stop;
 			algChannelsInfo[chanInd][0].free;
 			algChannelsInfo[chanInd][0] = nil;
