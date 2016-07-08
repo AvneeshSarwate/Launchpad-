@@ -75,11 +75,11 @@ bankSet = Set.new();
 bankSet.addAll(banks.flatten(1));
 //midiNote -> [bankInd, bankChan, isOn, loopTask/nil, loopString, algMelodyTask, algMelodyString]
 bankMap = Dictionary.new();
-f = bankMap;
 (0..3).do({|i| (0..3).do({|j|
 	//launchpadOut.control(0, j, color1[i]);
 	bankMap.put(banks[i][j], [j, i, false, nil, nil, nil, nil]); //TODO: reverse i,j here and everywhere else
 })});
+z = bankMap;
 bankSet.do({|i| launchpadOut.control(0, i, 0)});
 playingBanks = Set.new();
 algBanks = List.new();
@@ -147,21 +147,25 @@ launchPad = MIDIClient.sources.select({|elem| (elem.name == "Standalone Port")
 	&& (elem.device == "Launchpad Pro")})[0];
 [launchPad, MIDIClient.sources[2]].postln;
 a = {|vel, note, chan, port|
-	if(pads.includes(note), {
-		var padInfo = padMap[note];
-		var newNote = indToNote.(padInfo[0], padInfo[1]);
-		midiOut.noteOn(padInfo[1], newNote, vel);
-		if(recordingMetronome, {recordBuffer.add([tempoClock.beats, newNote, vel, padInfo[1], "on"])});
+	if(chan == 0, {
+		if(pads.includes(note), {
+			var padInfo = padMap[note];
+			var newNote = indToNote.(padInfo[0], padInfo[1]);
+			midiOut.noteOn(padInfo[1], newNote, vel);
+			if(recordingMetronome, {recordBuffer.add([tempoClock.beats, newNote, vel, padInfo[1], "on"])});
+		});
 	});
 };
 padOn = MIDIFunc.noteOn(a, nil, nil, launchPad.uid);
 
 b = {|vel, note, chan, port|
-	if(pads.includes(note), {
-		var padInfo = padMap[note];
-		var newNote = indToNote.(padInfo[0], padInfo[1]);
-		midiOut.noteOff(padInfo[1], newNote, vel);
-		if(recordingMetronome, {recordBuffer.add([tempoClock.beats, newNote, vel, padInfo[1], "off"])});
+	if(chan == 0, {
+		if(pads.includes(note), {
+			var padInfo = padMap[note];
+			var newNote = indToNote.(padInfo[0], padInfo[1]);
+			midiOut.noteOff(padInfo[1], newNote, vel);
+			if(recordingMetronome, {recordBuffer.add([tempoClock.beats, newNote, vel, padInfo[1], "off"])});
+		});
 	});
 };
 padOff = MIDIFunc.noteOff(b, nil, nil, launchPad.uid);
@@ -255,6 +259,7 @@ createRecordedTask = {|oldRecBuf, isChannelTask=false, channelInd=0|
 	recBuf = List.newFrom(oldRecBuf);
 	chan = recBuf[0][3];
 
+	//todo - this could phase a tiiiiny bit if left running for ages
 	newTask = Task({
 		var ind = 0;
 		var hit;
@@ -266,23 +271,26 @@ createRecordedTask = {|oldRecBuf, isChannelTask=false, channelInd=0|
 				if(hit[4] == "on", {midiOut.noteOn(hit[3], hit[1], hit[2]);});
 				if(hit[4] == "off", {midiOut.noteOff(hit[3], hit[1], hit[2])});
 			});
-			ind = ind+1;
+			ind = ind+1; //TODO - should this be after the switch to the ondeck buffer?
+
+			//TODO: this cuts off notes when loops are superimposed on same instrument
+			if(ind == recBuf.size, {midiOut.allNotesOff(recBuf[0][3])});
 
 			if(isChannelTask, {
 				if(ind == (recBuf.size-2), {
 					pythonOSCport.sendMsg("/algRequestUpdate", channelInd);
 				});
 
-				if(ind == (recBuf.size-1), {
+				if(ind == (recBuf.size), {
+					//["SHOULD BE timeAfterLastHit", ind, hit[4]].postln;
 					if(onDeckBuffers[channelInd] != nil, {
 						recBuf = onDeckBuffers[channelInd];
+						ind = 0;
 						onDeckBuffers[channelInd] = nil;
 					});
 				});
 			});
 
-			//TODO: this cuts off notes when loops are superimposed on same instrument
-			if(ind == recBuf.size, {midiOut.allNotesOff(recBuf[0][3])});
 			ind = ind%recBuf.size;
 		}.loop;
 	}, tempoClock);
@@ -299,10 +307,11 @@ f = {|msg, time, addr, recvPort|
 	tempoClock = TempoClock.new(1/msg[1], 0);
 	t = tempoClock;
 	tempoClock.schedAbs(1, metronomeFunc);
+	"MULTILOOP ONE SHOT".postln;
 };
 OSCFunc(f, "/masterClockBeat").oneShot;
 q = {|msg, time, addr, recvPort|
-	["MULTILOOP BEAT", tempoClock.beats].postln;
+	//["MULTILOOP BEAT", tempoClock.beats].postln;
 };
 OSCFunc(q, "/masterClockBeat");
 tapTempoSetButton = 5;
@@ -468,7 +477,8 @@ MIDIFunc.cc(c, nil, nil, launchPad.uid);
 //msg[1] is channel
 //msg[2] is bufferString
 recieveBuffer = {|msg, time, addr, recvPort|
-	var buffer = stringToBuf.(msg[2].asString);
+	var buffer = stringToBuf.(msg[2].asString.split($ )[1]); //todo - remove the string filler that caused the bug here
+	["UPDATE", msg].postln;
 	onDeckBuffers[msg[1].asInt] = buffer;
 };
 OSCFunc(recieveBuffer, "/algRecieveUpdate");
@@ -524,55 +534,13 @@ stopChannel = {|msg, time, addr, recvPort|
 OSCFunc(stopChannel, "/algStop");
 
 stringToBuf = {|melString|
-	melString.split($-).collect({|hitString|
+	var buf = melString.split($-).collect({|hitString|
 		var sp = hitString.split($,);
 		[sp[0].asFloat, sp[1].asInt, sp[2].asInt, sp[3].asInt, sp[4]]
 	});
+	//buf.do({|b| b.postln;});
+	buf
 };
-
-liveCodeHandler = {|msg, time, addr, recvPort|
-	var line = msg[1].asString;
-	var lineSplit = line.split($ );
-	var chanInd = lineSplit[0].asInteger;
-	var recBuf = lineSplit[1].split($-).collect({|hitString|
-		var sp = hitString.split($,);
-		[sp[0].asFloat, sp[1].asInt, sp[2].asInt, sp[3].asInt, sp[4]]
-	});
-	var algTask;
-
-	//recBuf.sort({|a, b| a[0] < b[0]});
-	recBuf.do({|hit| hit.postln});
-	algTask = createRecordedTask.(recBuf);
-	algBanks[chanInd] = [false, algTask, line];
-	tempoClock.sched(tempoClock.timeToNextBeat, {
-		algBanks[chanInd][0] = true;
-		algBanks[chanInd][1].play;
-	});
-};
-OSCFunc(liveCodeHandler, "/liveCodeEndpoint");
-
-//TODO bug: stop and free task here if it exists
-algResponseHandler = {|msg, time, addr, recvPort|
-	var line = msg[2].asString;
-	var lineSplit = line.split($ );
-	var key = lineSplit[0].asInteger;
-	var startBeat = lineSplit[2].asFloat;
-	var recBuf = lineSplit[1].split($-).collect({|hitString|
-		var sp = hitString.split($,);
-		[sp[0].asFloat, sp[1].asInt, sp[2].asInt, sp[3].asInt, sp[4]]
-	});
-	var algTask;
-	//recBuf.sort({|a, b| a[0] < b[0]});tempoClock.tempo = 1/(now-lastTap)
-	recBuf.do({|hit| hit.postln});
-
-	algTask = createRecordedTask.(recBuf);
-	bankMap[key][5] = algTask;
-	bankMap[key][6] = line;
-	"ALG RESPONSE".postln;
-	msg.postln;
-};
-
-OSCFunc(algResponseHandler, "/algResponse");
 
 //msg[1] is the new BEAT DURATION (not tempo)
 masterClockTempoHandler = {|msg, time, addr, recvPort|
@@ -721,8 +689,17 @@ fileSplit.do({|line|
 )
 
 
+f
+
 // ================================================================================================
 // ================================================================================================
+
+
+z[69][4]
+
+
+
+
 "0.5".asFloat + "7".asInteger
 ["5", "6", "7"].collect({|st| st.asInt}) + 10
 
