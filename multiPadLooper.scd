@@ -701,6 +701,28 @@ fileSplit.do({|line|
 f
 
 // ================================================================================================
+(
+//INDEXING FOR MODIFIED FULL-PAD KEYBOARD
+var root = 60;
+var scale = [0, 2, 4, 5 , 7 , 9, 11];
+(1..8).do({|i|
+	(1..8).do({|j|
+		var ind = i*10 + j - 11;
+		if(i > 1,
+			{
+				var shift = 0; //+- 5 for vertical, +- 1 for horizontal
+				var noteInd = (ind-((i-1)*5));
+				var note = root+noteInd;
+				var isRoot = (note%12) == (root%12)
+				var isInScale =
+				noteInd.postln;  //pad -> index into chromatic list of numbers starting from root in bottom left
+
+			},
+			{ind.postln}
+		);
+	})
+});
+)
 // ================================================================================================
 
 
