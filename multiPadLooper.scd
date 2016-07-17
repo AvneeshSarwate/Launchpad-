@@ -135,10 +135,10 @@ newKeysSetPadLights = {|ctrlChanInd|
 			var ind = i*10 + j;
 			var note = newKeysPadIndToNote.(ind, ctrlChanInd);
 			var isRoot = (note%12) == (root%12);
-			var floorRoot = root + (((note-root)/12).asInt * 12);
+			var floorRoot = note - (((note%12) - (root%12)) % 12);
 			var isInScale = scale.collect({|n| floorRoot + n}).includes(note);
-			if(isInScale && isRoot.not, {launchpadOut.noteOn(0, ind, color1[ctrlChanInd])});
 			["LIGHT", note, isInScale, isRoot, scale.collect({|n| floorRoot + n}).includes(note), scale.collect({|n| floorRoot + n})].postln;
+			if(isInScale && isRoot.not, {launchpadOut.noteOn(0, ind, color1[ctrlChanInd])});
 			if(isRoot, {launchpadOut.noteOn(0, ind, color2[ctrlChanInd])});
 			if(isInScale.not, {launchpadOut.noteOff(0, ind, color2[ctrlChanInd])});
 		})
@@ -146,6 +146,7 @@ newKeysSetPadLights = {|ctrlChanInd|
 };
 //---------------
 
+//(note%12 - root%12)%12
 
 arrowButtons = [91, 92, 93, 94];
 up = 91;
@@ -481,6 +482,8 @@ c = {|vel, note, chan, port|
 										playingBanks.remove(bNote);
 									})
 								});});
+								//TODO: this won't kill notes of an instrument thats not on this channel
+								//TODO: with newKeys, should generalize coloring of loop banks
 								midiOut.allNotesOff(thisBank[1]);
 								//todo: if algLooping, start algMelodyTask instead (no longer relevant?)
 								if(thisBank[5].isNil, {thisBank[3].start}, {thisBank[5].start});
@@ -509,6 +512,8 @@ c = {|vel, note, chan, port|
 	if((note == controlChanButton) && (vel == 127), {
 		controlChanInd = (controlChanInd+1) % 4;
 		launchpadOut.control(0, controlChanButton, color1[controlChanInd]);
+		newKeysChan = controlChanInd;
+		if(playingNewKeys, {newKeysSetPadLights.(controlChanInd)});
 	});
 	if((note == newKeyButton) && (vel == 127), {
 		//Todo newKeys - activate lighting wrt to the chan specified by controlChanButton
