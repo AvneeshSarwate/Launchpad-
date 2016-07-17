@@ -1,5 +1,5 @@
 (
-var launchpadOut, padTL, padBL, padTR, padBR, colorBL1, colorBR1, colorTL1, colorTR1, colorBL2, colorBR2, colorTL2, colorTR2, colorON, pads, padMap, madePadList, scales, roots, padOn, padOff, setPadLights, transposes, makePadList, indToNote_, indToNote, midiOut, launchPad, tempoClock, interruptLoopButtons, controlChanInd, tapTempoSetButton, tapTempoToggle, recordButton, lastTap, playMetronome, recordingMetronome, metronomeFunc, preRecordCount, preRecordLength, recordBuffer, color1, tlBanks, trBanks, blBanks, brBanks, banks, bankMap, recordingState, bankSet, bankToSaveTo, bankToRecording, recordColor, tempLoopTask, tempLoopString, createRecordedTask, playingBanks, metronomeFlashTask, recordingInterim, resetRecordingState, interruptLooping, controlChanButton, arrowButtons, color2, up, down, left, right, padsByChannel, recordingStartBeat, recordingEndBeat, truncateLoop, quantize, algOrderList, pythonOSCport, algResponseHandler, algButtons, quantizationLevels, algBanks, liveCodeHandler, algLoopButton, masterClockOSCport, masterClockTempoHandler, onDeckBuffers, algChannelsInfo, recieveBuffer, startChannel, stringToBuf, stopChannel, rootScaleHandler;
+var launchpadOut, padTL, padBL, padTR, padBR, colorBL1, colorBR1, colorTL1, colorTR1, colorBL2, colorBR2, colorTL2, colorTR2, colorON, pads, padMap, madePadList, scales, roots, padOn, padOff, setPadLights, transposes, makePadList, indToNote_, indToNote, midiOut, launchPad, tempoClock, interruptLoopButtons, controlChanInd, tapTempoSetButton, tapTempoToggle, recordButton, lastTap, playMetronome, recordingMetronome, metronomeFunc, preRecordCount, preRecordLength, recordBuffer, color1, tlBanks, trBanks, blBanks, brBanks, banks, bankMap, recordingState, bankSet, bankToSaveTo, bankToRecording, recordColor, tempLoopTask, tempLoopString, createRecordedTask, playingBanks, metronomeFlashTask, recordingInterim, resetRecordingState, interruptLooping, controlChanButton, arrowButtons, color2, up, down, left, right, padsByChannel, recordingStartBeat, recordingEndBeat, truncateLoop, quantize, algOrderList, pythonOSCport, algResponseHandler, algButtons, quantizationLevels, algBanks, liveCodeHandler, newKeyButton, masterClockOSCport, masterClockTempoHandler, onDeckBuffers, algChannelsInfo, recieveBuffer, startChannel, stringToBuf, stopChannel, rootScaleHandler, newKeyTransposes, newKeyIndToNote, newKeySetPadLights, playingNewKeys, newKeysChan;
 
 //MIDIClient.init;
 //MIDIIn.connectAll;
@@ -18,7 +18,7 @@ quantizationLevels = [4, 6];
 
 
 algButtons = [95, 96, 97];
-algLoopButton = 98;
+newKeyButton = 98;
 
 a = [1, 2, 3, 4];
 b = [5, 6, 7, 8];
@@ -106,6 +106,43 @@ indToNote_ = {|ind, scale, root, trans|
 indToNote = {|ind, chan| indToNote_.(ind, scales[chan], roots[chan], transposes[chan])};
 
 transposes = [-1, 4, -12, 0 ]; //+- 4 corresponds to up/down a row, +-1 corresponds to left/right a column
+
+//---------------
+//newKeyboard stuff
+newKeyboardTransposes = [-12, -12, -12, -12];  //+- 5 for vertical, +- 1 for horizontal
+
+playingNewKeys = false;
+
+newKeysChan = 0;
+//TODO - rename ctrlChanInd variable - it is actually newKeysChan
+newKeyIndToNote = {|padInd, ctrlChanInd|
+	var ind = i*10 + j - 11;
+	var noteInd, note;
+	if(padInd >  18,
+		{noteInd = (ind-((i-1)*5))},
+		{noteInd = ind}
+	);
+	note = roots[ctrlChanInd] + noteInd + newKeyboardTransposes[ctrlChanInd];
+	note;
+};
+
+newKeySetPadLights = {|ctrlChanInd|
+	(1..8).do({|i|
+		(1..8).do({|j|
+			var ind = i*10 + j;
+			var note = newKeyIndToNote.(ind, ctrlChanInd);
+			var isRoot = (note%12) == (root%12)
+			var floorRoot = root + (((note-root)/12).asInt * 12);
+			var isInScale = scale.collect({|n| floorRoot + n}).includes(note);
+			if(isInScale && isRoot.not, {launchpadOut.noteOn(0, ind, color1[ctrlChanInd])});
+			if(isRoot, {launchpadOut.noteOn(0, ind, color2[ctrlChanInd])});
+			if(isInScale.not, {launchpadOut.noteOff(0, ind, color2[ctrlChanInd])});
+		})
+	});
+};
+//---------------
+
+
 arrowButtons = [91, 92, 93, 94];
 up = 91;
 down = 92;
@@ -149,10 +186,21 @@ launchPad = MIDIClient.sources.select({|elem| (elem.name == "Standalone Port")
 a = {|vel, note, chan, port|
 	if(chan == 0, {
 		if(pads.includes(note), {
-			var padInfo = padMap[note];
-			var newNote = indToNote.(padInfo[0], padInfo[1]);
-			midiOut.noteOn(padInfo[1], newNote, vel);
-			if(recordingMetronome, {recordBuffer.add([tempoClock.beats, newNote, vel, padInfo[1], "on"])});
+			//TODO newKeys - new note map, new channel
+			var chan, newNote;
+			if(playingNewKeys,
+				{
+					newNote = newKeysPadIndToNote.(note, newKeysChan);
+					chan = newKeysChan;
+				},
+				{
+					var padInfo = padMap[note];
+					newNote = indToNote.(padInfo[0], padInfo[1]);
+					chan = padInfo[1];
+				}
+			);
+			midiOut.noteOn(chan, newNote, vel);
+			if(recordingMetronome, {recordBuffer.add([tempoClock.beats, newNote, vel, chan, "on"])});
 		});
 	});
 };
@@ -161,10 +209,20 @@ padOn = MIDIFunc.noteOn(a, nil, nil, launchPad.uid);
 b = {|vel, note, chan, port|
 	if(chan == 0, {
 		if(pads.includes(note), {
-			var padInfo = padMap[note];
-			var newNote = indToNote.(padInfo[0], padInfo[1]);
-			midiOut.noteOff(padInfo[1], newNote, vel);
-			if(recordingMetronome, {recordBuffer.add([tempoClock.beats, newNote, vel, padInfo[1], "off"])});
+			var chan, newNote;
+			if(playingNewKeys,
+				{
+					newNote = newKeysPadIndToNote.(note, newKeysChan);
+					chan = newKeysChan;
+				},
+				{
+					var padInfo = padMap[note];
+					newNote = indToNote.(padInfo[0], padInfo[1]);
+					chan = padInfo[1];
+				}
+			);
+			midiOut.noteOff(chan, newNote, vel);
+			if(recordingMetronome, {recordBuffer.add([tempoClock.beats, newNote, vel, chan, "off"])});
 		});
 	});
 };
@@ -448,19 +506,43 @@ c = {|vel, note, chan, port|
 		controlChanInd = (controlChanInd+1) % 4;
 		launchpadOut.control(0, controlChanButton, color1[controlChanInd]);
 	});
-	if(note == algLoopButton, {
-		algBanks[controlChanInd][1].stop;
-		algBanks[controlChanInd][0] = false;
-		midiOut.allNotesOff(controlChanInd); //TODO: clean this up
+	if((note == newKeyButton) && (vel == 127), {
+		//Todo newKeys - activate lighting wrt to the chan specified by controlChanButton
+		if(playingNewKeys,
+			{
+				playingNewKeys = false;
+				(0..3).do({|i|
+					setPadLights.(padsByChannel[i], color1[i], color2[i], i);
+				});
+			},
+			{
+				playingNewKeys = true;
+				newKeysChan = controlChanInd;
+				newKeySetPadLights.(controlChanInd);
+			}
+		);
 	});
 	if(arrowButtons.includes(note) && (vel == 127), {
 		//todo: note off all for that instrument
-		var ind = controlChanInd;
-		if(note == up, {transposes[ind] = transposes[ind] - 4});
-		if(note == down, {transposes[ind] = transposes[ind] + 4});
-		if(note == right, {transposes[ind] = transposes[ind] + 1});
-		if(note == left, {transposes[ind] = transposes[ind] - 1});
-		setPadLights.(padsByChannel[ind], color1[ind], color2[ind], ind);
+		//Todo newKeys - lighting shift
+		if(playingNewKeys,
+			{
+				var ind = newKeysChan;
+				if(note == up, {newKeysTransposes[ind] = newKeysTransposes[ind] - 5});
+				if(note == down, {newKeysTransposes[ind] = newKeysTransposes[ind] + 5});
+				if(note == right, {newKeysTransposes[ind] = newKeysTransposes[ind] + 1});
+				if(note == left, {newKeysTransposes[ind] = newKeysTransposes[ind] - 1});
+				newKeyssetPadLights.(ind);
+			},
+			{
+				var ind = controlChanInd;
+				if(note == up, {transposes[ind] = transposes[ind] - 4});
+				if(note == down, {transposes[ind] = transposes[ind] + 4});
+				if(note == right, {transposes[ind] = transposes[ind] + 1});
+				if(note == left, {transposes[ind] = transposes[ind] - 1});
+				setPadLights.(padsByChannel[ind], color1[ind], color2[ind], ind);
+			}
+		);
 	});
 	//MULTIPLE ALG BUTTONS CAN BE HELD DOWN
 	//THEIR ORDER WILL SPECIFY A "pipeline" of transformations
@@ -469,7 +551,7 @@ c = {|vel, note, chan, port|
 		if(vel == 127,
 			{algOrderList.add(note-95)},
 			{algOrderList.remove(algOrderList.indexOf(note-95))}
-		)
+		);
 	});
 };
 MIDIFunc.cc(c, nil, nil, launchPad.uid);
@@ -698,8 +780,9 @@ fileSplit.do({|line|
 )
 
 
-f
-
+56%12
+83%12
+((83-56)/12).asInt * 12
 // ================================================================================================
 (
 //INDEXING FOR MODIFIED FULL-PAD KEYBOARD
@@ -714,7 +797,8 @@ var scale = [0, 2, 4, 5 , 7 , 9, 11];
 				var noteInd = (ind-((i-1)*5));
 				var note = root+noteInd;
 				var isRoot = (note%12) == (root%12)
-				var isInScale =
+				var floorRoot = root + (((note-root)/12).asInt * 12);
+				var isInScale = scale.collect({|n| floorRoot + n}).includes(note);
 				noteInd.postln;  //pad -> index into chromatic list of numbers starting from root in bottom left
 
 			},
