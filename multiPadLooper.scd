@@ -1,5 +1,5 @@
 (
-var launchpadOut, padTL, padBL, padTR, padBR, colorBL1, colorBR1, colorTL1, colorTR1, colorBL2, colorBR2, colorTL2, colorTR2, colorON, pads, padMap, madePadList, scales, roots, padOn, padOff, setPadLights, transposes, makePadList, indToNote_, indToNote, midiOut, launchPad, tempoClock, interruptLoopButtons, controlChanInd, tapTempoSetButton, tapTempoToggle, recordButton, lastTap, playMetronome, recordingMetronome, metronomeFunc, preRecordCount, preRecordLength, recordBuffer, color1, tlBanks, trBanks, blBanks, brBanks, banks, bankMap, recordingState, bankSet, bankToSaveTo, bankToRecording, recordColor, tempLoopTask, tempLoopString, createRecordedTask, playingBanks, metronomeFlashTask, recordingInterim, resetRecordingState, interruptLooping, controlChanButton, arrowButtons, color2, up, down, left, right, padsByChannel, recordingStartBeat, recordingEndBeat, truncateLoop, quantize, algOrderList, pythonOSCport, algResponseHandler, algButtons, quantizationLevels, algBanks, liveCodeHandler, newKeyButton, masterClockOSCport, masterClockTempoHandler, onDeckBuffers, algChannelsInfo, recieveBuffer, startChannel, stringToBuf, stopChannel, rootScaleHandler, newKeyTransposes, newKeyIndToNote, newKeySetPadLights, playingNewKeys, newKeysChan;
+var launchpadOut, padTL, padBL, padTR, padBR, colorBL1, colorBR1, colorTL1, colorTR1, colorBL2, colorBR2, colorTL2, colorTR2, colorON, pads, padMap, madePadList, scales, roots, padOn, padOff, setPadLights, transposes, makePadList, indToNote_, indToNote, midiOut, launchPad, tempoClock, interruptLoopButtons, controlChanInd, tapTempoSetButton, tapTempoToggle, recordButton, lastTap, playMetronome, recordingMetronome, metronomeFunc, preRecordCount, preRecordLength, recordBuffer, color1, tlBanks, trBanks, blBanks, brBanks, banks, bankMap, recordingState, bankSet, bankToSaveTo, bankToRecording, recordColor, tempLoopTask, tempLoopString, createRecordedTask, playingBanks, metronomeFlashTask, recordingInterim, resetRecordingState, interruptLooping, controlChanButton, arrowButtons, color2, up, down, left, right, padsByChannel, recordingStartBeat, recordingEndBeat, truncateLoop, quantize, algOrderList, pythonOSCport, algResponseHandler, algButtons, quantizationLevels, algBanks, liveCodeHandler, newKeyButton, masterClockOSCport, masterClockTempoHandler, onDeckBuffers, algChannelsInfo, recieveBuffer, startChannel, stringToBuf, stopChannel, rootScaleHandler, newKeysTransposes, newKeysPadIndToNote, newKeysSetPadLights, playingNewKeys, newKeysChan;
 
 //MIDIClient.init;
 //MIDIIn.connectAll;
@@ -109,32 +109,36 @@ transposes = [-1, 4, -12, 0 ]; //+- 4 corresponds to up/down a row, +-1 correspo
 
 //---------------
 //newKeyboard stuff
-newKeyboardTransposes = [-12, -12, -12, -12];  //+- 5 for vertical, +- 1 for horizontal
+newKeysTransposes = [-12, -12, -12, -12];  //+- 5 for vertical, +- 1 for horizontal
 
 playingNewKeys = false;
 
 newKeysChan = 0;
 //TODO - rename ctrlChanInd variable - it is actually newKeysChan
-newKeyIndToNote = {|padInd, ctrlChanInd|
-	var ind = i*10 + j - 11;
+newKeysPadIndToNote = {|padInd, ctrlChanInd|
+	var ind = padInd - 11;
 	var noteInd, note;
 	if(padInd >  18,
-		{noteInd = (ind-((i-1)*5))},
+		{noteInd = (ind-(((ind/10).floor)*5))},
 		{noteInd = ind}
 	);
-	note = roots[ctrlChanInd] + noteInd + newKeyboardTransposes[ctrlChanInd];
+	note = roots[ctrlChanInd] + noteInd + newKeysTransposes[ctrlChanInd];
+	//["NOTE-IND", ind,noteInd, note].postln;
 	note;
 };
 
-newKeySetPadLights = {|ctrlChanInd|
+newKeysSetPadLights = {|ctrlChanInd|
+	var root = roots[ctrlChanInd];
+	var scale = scales[ctrlChanInd];
 	(1..8).do({|i|
 		(1..8).do({|j|
 			var ind = i*10 + j;
-			var note = newKeyIndToNote.(ind, ctrlChanInd);
-			var isRoot = (note%12) == (root%12)
+			var note = newKeysPadIndToNote.(ind, ctrlChanInd);
+			var isRoot = (note%12) == (root%12);
 			var floorRoot = root + (((note-root)/12).asInt * 12);
 			var isInScale = scale.collect({|n| floorRoot + n}).includes(note);
 			if(isInScale && isRoot.not, {launchpadOut.noteOn(0, ind, color1[ctrlChanInd])});
+			["LIGHT", note, isInScale, isRoot, scale.collect({|n| floorRoot + n}).includes(note), scale.collect({|n| floorRoot + n})].postln;
 			if(isRoot, {launchpadOut.noteOn(0, ind, color2[ctrlChanInd])});
 			if(isInScale.not, {launchpadOut.noteOff(0, ind, color2[ctrlChanInd])});
 		})
@@ -518,7 +522,7 @@ c = {|vel, note, chan, port|
 			{
 				playingNewKeys = true;
 				newKeysChan = controlChanInd;
-				newKeySetPadLights.(controlChanInd);
+				newKeysSetPadLights.(controlChanInd);
 			}
 		);
 	});
@@ -532,7 +536,7 @@ c = {|vel, note, chan, port|
 				if(note == down, {newKeysTransposes[ind] = newKeysTransposes[ind] + 5});
 				if(note == right, {newKeysTransposes[ind] = newKeysTransposes[ind] + 1});
 				if(note == left, {newKeysTransposes[ind] = newKeysTransposes[ind] - 1});
-				newKeyssetPadLights.(ind);
+				newKeysSetPadLights.(ind);
 			},
 			{
 				var ind = controlChanInd;
