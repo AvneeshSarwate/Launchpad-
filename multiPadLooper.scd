@@ -514,6 +514,7 @@ c = {|vel, note, chan, port|
 		launchpadOut.control(0, controlChanButton, color1[controlChanInd]);
 		newKeysChan = controlChanInd;
 		if(playingNewKeys, {newKeysSetPadLights.(controlChanInd)});
+		//todo - turn off note if swapping between different channels on newKeys or to/from newKeys to old
 	});
 	if((note == newKeyButton) && (vel == 127), {
 		//Todo newKeys - activate lighting wrt to the chan specified by controlChanButton
@@ -645,6 +646,7 @@ rootScaleHandler = {|msg, time, addr, recvPort|
 	msg[2].postln;
 	roots[msg[3].asInt] = msg[1].asInt;
 	scales[msg[3].asInt] = msg[2].asString.split($,).collect({|str| str.asInt});
+	//TODO - add changing pad coloring upon reciept of scale
 };
 OSCFunc(rootScaleHandler, "/rootScale");
 
