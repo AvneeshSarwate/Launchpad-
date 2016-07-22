@@ -236,6 +236,7 @@ x = 0;
 tempLoopTask = nil; //this var is only not nil when you have a recorded and unsaved loop
 tempLoopString = nil;
 
+
 //TODO: alternative - quantaize to 4ths or 6ths, chose based on minimum error (can change per beat)
 //{hit[0] = hit[0].floor + ((hit[0]%1 * 6).round / 6)}
 //NOTE - translates hitTime -> duration-before-hit for each beat
@@ -252,7 +253,15 @@ quantize = {|oldRecBuf, quantDivArray, startBeat, endBeat|
 	var timeAfterLastHit;
 
 	listsPerBeat.add(List.new());
+
 	recBuf.do({|hit| [hit[0], startBeat].postln; if(hit[0] < startBeat, {hit[0] = startBeat}) });
+	recBuf.do({|elem|
+		if(elem[4] == "on",
+			{hangingNotes.add([elem[1], elem[3]])},
+			{hangingNotes.remove([elem[1], elem[3]])})
+	});
+	hangingNotes.do({|elem| recBuf.add([endBeat-0.01, elem[0], 0, elem[1], "off"])});
+
 	"LOG1".postln;
 	recBuf.do({|hit|
 		var indexBeat = hit[0].floor-startBeat;
@@ -289,13 +298,6 @@ quantize = {|oldRecBuf, quantDivArray, startBeat, endBeat|
 	//TOGGLE QUANTIZATION HERE
 	//recBuf = quantizedHits.inject([], _++_);
 	recBuf;
-
-
-	recBuf.do({|elem|
-		if(elem[4] == "on",
-			{hangingNotes.add(elem[1])},
-			{hangingNotes.remove(elem[1])})
-	});
 
 	if((hangingNotes.size > 0) || truncateLoop.not,
 		{timeAfterLastHit = endBeat - recBuf[recBuf.size-1][0]},
@@ -335,9 +337,6 @@ createRecordedTask = {|oldRecBuf, isChannelTask=false, channelInd=0|
 				if(hit[4] == "off", {midiOut.noteOff(hit[3], hit[1], hit[2])});
 			});
 			ind = ind+1; //TODO - should this be after the switch to the ondeck buffer?
-
-			//TODO: this cuts off notes when loops are superimposed on same instrument
-			if(ind == recBuf.size, {midiOut.allNotesOff(recBuf[0][3])});
 
 			if(isChannelTask, {
 				if(ind == (recBuf.size-2), {
@@ -406,20 +405,20 @@ c = {|vel, note, chan, port|
 	if((note == tapTempoToggle) && (vel == 127), {playMetronome = playMetronome.not});
 	if((note == recordButton) && (vel == 127), {
 		//TODO = case statement
-		if(recordingState == 0, {
+		if(recordingState == 0, { //start recording
 			bankToSaveTo = 0;
 			recordingState = 1;
 			recordingMetronome = true;
 			preRecordCount = 0;
 		});
-		if(recordingState == 3, {
+		if(recordingState == 3, { //discarding loop
 			tempLoopTask.stop;
 			recordBuffer.do({|elem| midiOut.noteOff(elem[3], elem[1])});
 			tempLoopTask.free;
 
 			resetRecordingState.();
 		});
-		if(recordingState == 2, {
+		if(recordingState == 2, { //stop recording
 			var recBuf;
 			recordingState = 3;
 			preRecordCount = 0;
@@ -428,7 +427,6 @@ c = {|vel, note, chan, port|
 
 			//TODO: handle cases where multiple inst hits in a recBuf, or when there's no noteOns recorded
 			chan = recordBuffer[0][3];
-			midiOut.allNotesOff(chan);
 
 			recBuf = quantize.(recordBuffer, quantizationLevels, recordingStartBeat, recordingEndBeat);
 
@@ -822,9 +820,6 @@ var scale = [0, 2, 4, 5 , 7 , 9, 11];
 
 
 z[69][4]
-
-
-
 
 "0.5".asFloat + "7".asInteger
 ["5", "6", "7"].collect({|st| st.asInt}) + 10
