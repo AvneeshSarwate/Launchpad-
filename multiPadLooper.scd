@@ -237,6 +237,48 @@ tempLoopTask = nil; //this var is only not nil when you have a recorded and unsa
 tempLoopString = nil;
 
 
+//does NOT include timeAfterLastHit
+//time is a timestamp, not a "pre-hit" duration
+//makes assumption that there is always a noteOn before a noteOff
+hitListToNoteList = {|hitList, startBeat|
+	var notesToStartStop = Dictionary.new();
+	var noteList = List.new();
+	hitList.do({|hit|
+		timeSoFar = timeSoFar + hit[0];
+		if(notesToStartStop[hit[1]].isNil,
+			//time, velocity, midiChan, on/off
+			{notesToStartStop[hit[1]] = [[hit[0] - startBeat,  hit[2], hit[3], hit[4]]]},
+			{notesToStartStop[hit[1]].add([hit[0] - startBeat,  hit[2], hit[3], hit[4]])}
+	)});
+
+	notesToStartStop.keys.do({|midiNote|
+		var startStop = notesToStartStop[note];
+		(0,2..(startStop.size-2)).do({|ind|
+			//time, midiNote, onVelocity, midiChan, duration
+			noteList.add([startStop[i][0], midiNote, startStop[i][1], startStop[i][2], startStop[i+1][0]-startStop[i][0]]);
+		});
+	});
+
+	noteList.sort({|a, b| a[0] < b[0]});
+	noteList;
+};
+
+noteListToHitList = {|noteList|
+	var intermediateList = List.new();
+	var timeAfterLastHit;
+	noteList.do({|n|
+		intermediateHitList.add([n[0], n[1], n[2], n[3], "on"]);
+		intermediateHitList.add([n[0]+n[4], n[1], n[2], n[3], "off"])
+	});
+	intermediateList.sort({|a, b| a[0] < b[0]});
+	timeAfterLastHit = intermediateHitList.wrapAt(-1)[0].asInt+1 - intermediateHitList.wrapAt(-1)[0];
+	((intermediateList.size-1), (intermediateList.size-2)..0).do({|ind|
+		intermmediateHitList[ind][0] = intermmediateHitList[ind][0] - intermmediateHitList[ind-1][0];
+	});
+
+	intermediateHitList
+};
+
 //TODO: alternative - quantaize to 4ths or 6ths, chose based on minimum error (can change per beat)
 //{hit[0] = hit[0].floor + ((hit[0]%1 * 6).round / 6)}
 //NOTE - translates hitTime -> duration-before-hit for each beat
@@ -262,6 +304,8 @@ quantize = {|oldRecBuf, quantDivArray, startBeat, endBeat|
 	});
 	hangingNotes.do({|elem| recBuf.add([endBeat-0.01, elem[0], 0, elem[1], "off"])});
 
+	//todo - quantize based on "notes" instead of hits - shift noteOn but keep note duration the same
+
 	"LOG1".postln;
 	recBuf.do({|hit|
 		var indexBeat = hit[0].floor-startBeat;
@@ -280,9 +324,9 @@ quantize = {|oldRecBuf, quantDivArray, startBeat, endBeat|
 		var quantHitList;
 		quantDivArray.do({|div|
 			var quantList = List.new();
-			var error = 0; //TODO: ignore noteOff messages for quantization?
+			var error = 0; //ignore noteOff messages for error calculation
 			hits.do({|hit| quantList.add(hit[0].floor + ((hit[0]%1 * div).round / div))});
-			(hits.size-1).do({|i| error = error + (hits[i][0] - quantList[i]).abs});
+			(hits.size-1).do({|i| if(hits[i][4] == "on", {error = error + (hits[i][0] - quantList[i]).abs})});
 			quantLists.add([quantList, error]);
 		});
 		quantLists.do({|listErr| if(listErr[1] < bestList[1], {bestList = listErr})});
@@ -297,7 +341,6 @@ quantize = {|oldRecBuf, quantDivArray, startBeat, endBeat|
 	//TODO - something still messed up with long held notes
 	//TOGGLE QUANTIZATION HERE
 	//recBuf = quantizedHits.inject([], _++_);
-	recBuf;
 
 	if((hangingNotes.size > 0) || truncateLoop.not,
 		{timeAfterLastHit = endBeat - recBuf[recBuf.size-1][0]},
@@ -744,7 +787,10 @@ var func = {|a, b=5|
 };
 func.(1)
 )
-
+(
+a = [1, 4, 5];
+a.wrapAt(-1)
+)
 (
 var file = File("~/joelLoop.txt".standardizePath, "wb");
 var lines = List.new();
@@ -817,8 +863,16 @@ var scale = [0, 2, 4, 5 , 7 , 9, 11];
 });
 )
 // ================================================================================================
-
-
+(
+a = [[10, 110], [9, 111]];
+a.sort({|a, b| a[0] < b[0]});
+[1, 4, 5].sort({|a, b| a < b});
+a
+)
+(
+a = 5;
+a += 5
+)
 z[69][4]
 
 "0.5".asFloat + "7".asInteger
