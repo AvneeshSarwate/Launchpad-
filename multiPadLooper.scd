@@ -470,19 +470,19 @@ c = {|vel, note, chan, port|
 						if(thisBank[2].not,
 							{
 								if(false, {//with this as false, banks can be overlayed
-								//for all other banks for this inst, stop playing and turn their lights on
-								banks[thisBank[1]].do({|bNote|
-									if(bankMap[bNote][3] != nil, {
-										var elem = bankMap[bNote];
-										elem[3].stop;
-										elem[2] = false; //TODO: refactor to make bank on/off functions
-										Task({0.001.wait; launchpadOut.control(0, bNote, color1[elem[1]]);}).play;
-										playingBanks.remove(bNote);
+									//for all other banks for this inst, stop playing and turn their lights on
+									banks[thisBank[1]].do({|bNote|
+										if(bankMap[bNote][3] != nil, {
+											var elem = bankMap[bNote];
+											elem[3].stop;
+											elem[2] = false; //TODO: refactor to make bank on/off functions
+											Task({0.001.wait; launchpadOut.control(0, bNote, color1[elem[1]]);}).play;
+											playingBanks.remove(bNote);
 									})
 								});});
 								//TODO: this won't kill notes of an instrument thats not on this channel
 								//TODO: with newKeys, should generalize coloring of loop banks
-								midiOut.allNotesOff(thisBank[1]);
+								//midiOut.allNotesOff(thisBank[1]);
 								//todo: if algLooping, start algMelodyTask instead (no longer relevant?)
 								if(thisBank[5].isNil, {thisBank[3].start}, {thisBank[5].start});
 								thisBank[2] = true;
