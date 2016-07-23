@@ -348,9 +348,10 @@ quantize = {|oldRecBuf, quantDivArray, startBeat, endBeat|
 
 	//todo - quantize based on "notes" instead of hits - shift noteOn but keep note duration the same
 
+	//todo - quant start - can drop in noteList here instead of hit list?
 	"LOG1".postln;
 	recBuf.do({|hit|
-		var indexBeat = hit[0].floor-startBeat;
+		var indexBeat = hit[0].floor;
 		//["HIT", indexBeat, currentBeat, hit].postln;
 		if(indexBeat > currentBeat, {
 			listsPerBeat.add(List.new());
@@ -368,7 +369,7 @@ quantize = {|oldRecBuf, quantDivArray, startBeat, endBeat|
 			var quantList = List.new();
 			var error = 0; //ignore noteOff messages for error calculation
 			hits.do({|hit| quantList.add(hit[0].floor + ((hit[0]%1 * div).round / div))});
-			(hits.size-1).do({|i| if(hits[i][4] == "on", {error = error + (hits[i][0] - quantList[i]).abs})});
+			(hits.size-1).do({|i| error = error + (hits[i][0] - quantList[i]).abs});
 			quantLists.add([quantList, error]);
 		});
 		quantLists.do({|listErr| if(listErr[1] < bestList[1], {bestList = listErr})});
@@ -379,6 +380,7 @@ quantize = {|oldRecBuf, quantDivArray, startBeat, endBeat|
 		});
 		quantizedHits.add(quantHitList);
 	});
+	//todo - quant end
 
 	//TODO - something still messed up with long held notes
 	//TOGGLE QUANTIZATION HERE
