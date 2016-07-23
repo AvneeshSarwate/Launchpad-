@@ -240,43 +240,63 @@ tempLoopString = nil;
 //does NOT include timeAfterLastHit
 //time is a timestamp, not a "pre-hit" duration
 //makes assumption that there is always a noteOn before a noteOff
-hitListToNoteList = {|hitList, startBeat|
+hitListToNoteList = {|hitList|
 	var notesToStartStop = Dictionary.new();
 	var noteList = List.new();
+	var timeSoFar = 0;
+	var count = 1;
+	"AAAAAAA".postln;
+	x = hitList;
+	"A1".postln;
 	hitList.do({|hit|
+		hit.postln;
+		timeSoFar = timeSoFar + hit[0];
 		if(notesToStartStop[hit[1]].isNil,
 			//time, velocity, midiChan, on/off
-			{notesToStartStop[hit[1]] = [[hit[0] - startBeat,  hit[2], hit[3], hit[4]]]},
-			{notesToStartStop[hit[1]].add([hit[0] - startBeat,  hit[2], hit[3], hit[4]])}
+			{notesToStartStop[hit[1]] = [[timeSoFar,  hit[2], hit[3], hit[4]]].asList},
+			{
+				count = count+1;
+				["pre", notesToStartStop[hit[1]].size].postln;
+				notesToStartStop[hit[1]].add([timeSoFar,  hit[2], hit[3], hit[4]]);
+				["post", notesToStartStop[hit[1]].size].postln;
+			}
 	)});
-
+	"A2".postln;
+	notesToStartStop.postln;
 	notesToStartStop.keys.do({|midiNote|
 		var startStop = notesToStartStop[midiNote];
+		[count, startStop.size].postln;
 		(0,2..(startStop.size-2)).do({|ind|
 			//time, midiNote, onVelocity, midiChan, duration
-			noteList.add([startStop[i][0], midiNote, startStop[i][1], startStop[i][2], startStop[i+1][0]-startStop[i][0]]);
+			noteList.add([startStop[ind][0], midiNote, startStop[ind][1], startStop[ind][2], startStop[ind+1][0]-startStop[ind][0]]);
 		});
 	});
 
 	noteList.sort({|a, b| a[0] < b[0]});
+	"A3".postln;
 	noteList;
 };
+y = hitListToNoteList;
 
 noteListToHitList = {|noteList|
 	var intermediateHitList = List.new();
-	var timeAfterLastHit;
+
 	noteList.do({|n|
 		intermediateHitList.add([n[0], n[1], n[2], n[3], "on"]);
-		intermediateHitList.add([n[0]+n[4], n[1], n[2], n[3], "off"])
+		intermediateHitList.add([n[0]+n[4], n[1], 0, n[3], "off"])
 	});
+	["B1", noteList.size, intermediateHitList.size].postln;
 	intermediateHitList.sort({|a, b| a[0] < b[0]});
-	timeAfterLastHit = intermediateHitList.wrapAt(-1)[0].asInt+1 - intermediateHitList.wrapAt(-1)[0];
-	((intermediateHitList.size-1), (intermediateHitList.size-2)..0).do({|ind|
+
+	"B2".postln;
+	((intermediateHitList.size-1), (intermediateHitList.size-2)..1).do({|ind|
 		intermediateHitList[ind][0] = intermediateHitList[ind][0] - intermediateHitList[ind-1][0];
 	});
 
 	intermediateHitList
 };
+
+z = noteListToHitList;
 
 //TODO: alternative - quantaize to 4ths or 6ths, chose based on minimum error (can change per beat)
 //{hit[0] = hit[0].floor + ((hit[0]%1 * 6).round / 6)}
@@ -296,15 +316,6 @@ quantize = {|oldRecBuf, quantDivArray, startBeat, endBeat|
 
 	listsPerBeat.add(List.new());
 
-	"PRE NOTES".postln;
-	newBuf = noteListToHitList.(hitListToNoteList.(recBuf));
-	if(recBuf == newBuf, "MATCH".postln, {
-		"NO MATCH".postln;
-		(0..recBuf.size).do({|ind|
-			[i+":  ", recBuf[i], "      ", newBuf[i]].postln
-		});
-	});
-	"POST NOTES".postln;
 
 	recBuf.do({|hit| [hit[0], startBeat].postln; if(hit[0] < startBeat, {hit[0] = startBeat}) });
 	recBuf.do({|elem|
@@ -314,12 +325,33 @@ quantize = {|oldRecBuf, quantDivArray, startBeat, endBeat|
 	});
 	hangingNotes.do({|elem| recBuf.add([endBeat-0.01, elem[0], 0, elem[1], "off"])});
 
+	if(truncateLoop,
+		{timeAfterLastHit = (recBuf[recBuf.size-1][0].ceil - recBuf[recBuf.size-1][0])},
+		{timeAfterLastHit = endBeat - recBuf[recBuf.size-1][0]}
+	);
+
+	(recBuf.size-1..1).do({|i| recBuf[i][0] = recBuf[i][0] - recBuf[i-1][0]});
+	recBuf[0][0] = recBuf[0][0] - startBeat;
+
+	"PRE NOTES".postln;
+	newBuf = y.(recBuf, startBeat);
+	newBuf.do({|note| note.postln});
+	"B".postln;
+	newBuf = z.(newBuf);
+	if(recBuf == newBuf, {"MATCH".postln}, {
+		"NO MATCH".postln;
+		(0..recBuf.size).do({|ind|
+			[ind+":  ", recBuf[ind], "      ", newBuf[ind]].postln
+		});
+	});
+	"POST NOTES".postln;
+
 	//todo - quantize based on "notes" instead of hits - shift noteOn but keep note duration the same
 
 	"LOG1".postln;
 	recBuf.do({|hit|
 		var indexBeat = hit[0].floor-startBeat;
-		["HIT", indexBeat, currentBeat, hit].postln;
+		//["HIT", indexBeat, currentBeat, hit].postln;
 		if(indexBeat > currentBeat, {
 			listsPerBeat.add(List.new());
 			currentBeat = indexBeat;
@@ -352,15 +384,9 @@ quantize = {|oldRecBuf, quantDivArray, startBeat, endBeat|
 	//TOGGLE QUANTIZATION HERE
 	//recBuf = quantizedHits.inject([], _++_);
 
-	if((hangingNotes.size > 0) || truncateLoop.not,
-		{timeAfterLastHit = endBeat - recBuf[recBuf.size-1][0]},
-		{timeAfterLastHit = (recBuf[recBuf.size-1][0].ceil - recBuf[recBuf.size-1][0])}
-	);
 
-	recBuf.do({|hit| if(true/*hit[4] == "on"*/, {["HIT TIME", hit[4], hit[0]].postln})});
+	//recBuf.do({|hit| if(true/*hit[4] == "on"*/, {["HIT TIME", hit[4], hit[0]].postln})});
 
-	(recBuf.size-1..1).do({|i| recBuf[i][0] = recBuf[i][0] - recBuf[i-1][0]});
-	recBuf[0][0] = recBuf[0][0] - startBeat;
 
 	recBuf.add([timeAfterLastHit, 0, 0, 0, "timeAfterLastHit"]); //xtra vals to simlpify save/load serialization
 
@@ -873,47 +899,71 @@ var scale = [0, 2, 4, 5 , 7 , 9, 11];
 });
 )
 // ================================================================================================
+
 (
-a = [[10, 110], [9, 111]];
-a.sort({|a, b| a[0] < b[0]});
-[1, 4, 5].sort({|a, b| a < b});
-a
+var hitListToNoteList, noteListToHitList;
+
+//does NOT include timeAfterLastHit
+//makes assumption that there is always a noteOn before a noteOff
+hitListToNoteList = {|hitList|
+	var notesToStartStop = Dictionary.new();
+	var noteList = List.new();
+	var timeSoFar = 0;
+	var count = 1;
+	"AAAAAAA".postln;
+	x = hitList;
+	"A1".postln;
+	hitList.do({|hit|
+		hit.postln;
+		timeSoFar = timeSoFar + hit[0];
+		if(notesToStartStop[hit[1]].isNil,
+			//time, velocity, midiChan, on/off
+			{notesToStartStop[hit[1]] = [[timeSoFar,  hit[2], hit[3], hit[4]]].asList},
+			{
+				count = count+1;
+				["pre", notesToStartStop[hit[1]].size].postln;
+				notesToStartStop[hit[1]].add([timeSoFar,  hit[2], hit[3], hit[4]]);
+				["post", notesToStartStop[hit[1]].size].postln;
+			}
+	)});
+	"A2".postln;
+	notesToStartStop.postln;
+	notesToStartStop.keys.do({|midiNote|
+		var startStop = notesToStartStop[midiNote];
+		[count, startStop.size].postln;
+		(0,2..(startStop.size-2)).do({|ind|
+			//time, midiNote, onVelocity, midiChan, duration
+			noteList.add([startStop[ind][0], midiNote, startStop[ind][1], startStop[ind][2], startStop[ind+1][0]-startStop[ind][0]]);
+		});
+	});
+
+	noteList.sort({|a, b| a[0] < b[0]});
+	"A3".postln;
+	noteList;
+};
+y = hitListToNoteList;
+
+noteListToHitList = {|noteList|
+	var intermediateHitList = List.new();
+
+	noteList.do({|n|
+		intermediateHitList.add([n[0], n[1], n[2], n[3], "on"]);
+		intermediateHitList.add([n[0]+n[4], n[1], 0, n[3], "off"])
+	});
+	["B1", noteList.size, intermediateHitList.size].postln;
+	intermediateHitList.sort({|a, b| a[0] < b[0]});
+
+	"B2".postln;
+	((intermediateHitList.size-1), (intermediateHitList.size-2)..1).do({|ind|
+		intermediateHitList[ind][0] = intermediateHitList[ind][0] - intermediateHitList[ind-1][0];
+	});
+
+	intermediateHitList
+};
+
+z = noteListToHitList;
 )
+x
 (
-a = 5;
-a += 5
+y.(x)
 )
-z[69][4]
-
-"0.5".asFloat + "7".asInteger
-["5", "6", "7"].collect({|st| st.asInt}) + 10
-
-[1, 2, "a"] < [1, 2, "c"]
-
-"abcdefg"[1..3]
-
-Task({}) != nil
-(
-MIDIClient.init;
-var cfunc;
-var midiOut = MIDIOut.newByName("IAC Driver", "Bus 1");
-midiOut.latency = 0;
-a = TempoClock.new(1);
-b = TempoClock.new(1);
-
-cfunk = {
-	midiOut.(0, 60, 80);
-	1;
-	b.queue = a.queue
-}
-)
-(
-t = Task({ { "I'm loopy".postln; 1.wait;}.loop });
-t.start;//TODO: see what results in "already playing" errors (use task.isPlaying)
-)
-t.play
-(
-a = 5;
-a+=1
-)
-
