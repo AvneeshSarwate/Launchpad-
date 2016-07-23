@@ -1,5 +1,5 @@
 (
-var launchpadOut, padTL, padBL, padTR, padBR, colorBL1, colorBR1, colorTL1, colorTR1, colorBL2, colorBR2, colorTL2, colorTR2, colorON, pads, padMap, madePadList, scales, roots, padOn, padOff, setPadLights, transposes, makePadList, indToNote_, indToNote, midiOut, launchPad, tempoClock, interruptLoopButtons, controlChanInd, tapTempoSetButton, tapTempoToggle, recordButton, lastTap, playMetronome, recordingMetronome, metronomeFunc, preRecordCount, preRecordLength, recordBuffer, color1, tlBanks, trBanks, blBanks, brBanks, banks, bankMap, recordingState, bankSet, bankToSaveTo, bankToRecording, recordColor, tempLoopTask, tempLoopString, createRecordedTask, playingBanks, metronomeFlashTask, recordingInterim, resetRecordingState, interruptLooping, controlChanButton, arrowButtons, color2, up, down, left, right, padsByChannel, recordingStartBeat, recordingEndBeat, truncateLoop, quantize, algOrderList, pythonOSCport, algResponseHandler, algButtons, quantizationLevels, algBanks, liveCodeHandler, newKeyButton, masterClockOSCport, masterClockTempoHandler, onDeckBuffers, algChannelsInfo, recieveBuffer, startChannel, stringToBuf, stopChannel, rootScaleHandler, newKeysTransposes, newKeysPadIndToNote, newKeysSetPadLights, playingNewKeys, newKeysChan;
+var launchpadOut, padTL, padBL, padTR, padBR, colorBL1, colorBR1, colorTL1, colorTR1, colorBL2, colorBR2, colorTL2, colorTR2, colorON, pads, padMap, madePadList, scales, roots, padOn, padOff, setPadLights, transposes, makePadList, indToNote_, indToNote, midiOut, launchPad, tempoClock, interruptLoopButtons, controlChanInd, tapTempoSetButton, tapTempoToggle, recordButton, lastTap, playMetronome, recordingMetronome, metronomeFunc, preRecordCount, preRecordLength, recordBuffer, color1, tlBanks, trBanks, blBanks, brBanks, banks, bankMap, recordingState, bankSet, bankToSaveTo, bankToRecording, recordColor, tempLoopTask, tempLoopString, createRecordedTask, playingBanks, metronomeFlashTask, recordingInterim, resetRecordingState, interruptLooping, controlChanButton, arrowButtons, color2, up, down, left, right, padsByChannel, recordingStartBeat, recordingEndBeat, truncateLoop, quantize, algOrderList, pythonOSCport, algResponseHandler, algButtons, quantizationLevels, algBanks, liveCodeHandler, newKeyButton, masterClockOSCport, masterClockTempoHandler, onDeckBuffers, algChannelsInfo, recieveBuffer, startChannel, stringToBuf, stopChannel, rootScaleHandler, newKeysTransposes, newKeysPadIndToNote, newKeysSetPadLights, playingNewKeys, newKeysChan, hitListToNoteList, noteListToHitList;
 
 //MIDIClient.init;
 //MIDIIn.connectAll;
@@ -244,7 +244,6 @@ hitListToNoteList = {|hitList, startBeat|
 	var notesToStartStop = Dictionary.new();
 	var noteList = List.new();
 	hitList.do({|hit|
-		timeSoFar = timeSoFar + hit[0];
 		if(notesToStartStop[hit[1]].isNil,
 			//time, velocity, midiChan, on/off
 			{notesToStartStop[hit[1]] = [[hit[0] - startBeat,  hit[2], hit[3], hit[4]]]},
@@ -252,7 +251,7 @@ hitListToNoteList = {|hitList, startBeat|
 	)});
 
 	notesToStartStop.keys.do({|midiNote|
-		var startStop = notesToStartStop[note];
+		var startStop = notesToStartStop[midiNote];
 		(0,2..(startStop.size-2)).do({|ind|
 			//time, midiNote, onVelocity, midiChan, duration
 			noteList.add([startStop[i][0], midiNote, startStop[i][1], startStop[i][2], startStop[i+1][0]-startStop[i][0]]);
@@ -264,16 +263,16 @@ hitListToNoteList = {|hitList, startBeat|
 };
 
 noteListToHitList = {|noteList|
-	var intermediateList = List.new();
+	var intermediateHitList = List.new();
 	var timeAfterLastHit;
 	noteList.do({|n|
 		intermediateHitList.add([n[0], n[1], n[2], n[3], "on"]);
 		intermediateHitList.add([n[0]+n[4], n[1], n[2], n[3], "off"])
 	});
-	intermediateList.sort({|a, b| a[0] < b[0]});
+	intermediateHitList.sort({|a, b| a[0] < b[0]});
 	timeAfterLastHit = intermediateHitList.wrapAt(-1)[0].asInt+1 - intermediateHitList.wrapAt(-1)[0];
-	((intermediateList.size-1), (intermediateList.size-2)..0).do({|ind|
-		intermmediateHitList[ind][0] = intermmediateHitList[ind][0] - intermmediateHitList[ind-1][0];
+	((intermediateHitList.size-1), (intermediateHitList.size-2)..0).do({|ind|
+		intermediateHitList[ind][0] = intermediateHitList[ind][0] - intermediateHitList[ind-1][0];
 	});
 
 	intermediateHitList
@@ -292,9 +291,20 @@ quantize = {|oldRecBuf, quantDivArray, startBeat, endBeat|
 	var quantizedHits = List.new();
 	var hangingNotes = Set.new();
 	var recBuf = List.newFrom(oldRecBuf);
+	var newBuf;
 	var timeAfterLastHit;
 
 	listsPerBeat.add(List.new());
+
+	"PRE NOTES".postln;
+	newBuf = noteListToHitList.(hitListToNoteList.(recBuf));
+	if(recBuf == newBuf, "MATCH".postln, {
+		"NO MATCH".postln;
+		(0..recBuf.size).do({|ind|
+			[i+":  ", recBuf[i], "      ", newBuf[i]].postln
+		});
+	});
+	"POST NOTES".postln;
 
 	recBuf.do({|hit| [hit[0], startBeat].postln; if(hit[0] < startBeat, {hit[0] = startBeat}) });
 	recBuf.do({|elem|
