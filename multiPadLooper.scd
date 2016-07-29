@@ -726,6 +726,11 @@ rootScaleHandler = {|msg, time, addr, recvPort|
 	roots[msg[3].asInt] = msg[1].asInt;
 	scales[msg[3].asInt] = msg[2].asString.split($,).collect({|str| str.asInt});
 	//TODO - add changing pad coloring upon reciept of scale
+	if(playingNewKeys,
+		{newKeysSetPadLights.(controlChanInd)},
+		{(0..3).do({|i| setPadLights.(padsByChannel[i], color1[i], color2[i], i)})}
+	);
+	["root-Scale Change", msg[1].asInt, scales[msg[3].asInt]].postln;
 };
 OSCFunc(rootScaleHandler, "/rootScale");
 
