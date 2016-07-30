@@ -396,14 +396,16 @@ quantize = {|oldRecBuf, quantDivArray, startBeat, endBeat|
 	//TOGGLE QUANTIZATION HERE
 	if(quantized, {
 		var loopDur = endBeat - startBeat;
+		var maxEnd = 0;
 
 		//modify noteEnds and timeAfterLastBeat s.t. it is still within an integral beat length
 		quantizedNotes.do({|note|
-			if((note[0] + note[4]) > loopDur, {note[4] = loopDur - 0.001})
+			if((note[0] + note[4]) > loopDur, {note[4] = loopDur - 0.001});
+			if((note[0] + note[4]) > maxEnd, {maxEnd = note[0] + note[4]});
 		});
 
 		//recalculate timeAfterLastHit
-
+		timeAfterLastHit = loopDur - maxEnd;
 
 		recBuf = noteListToHitList.(quantizedNotes);
 
@@ -487,7 +489,7 @@ tapTempoToggle = 6;
 recordButton = 7;
 recordColor = 5;
 launchpadOut.control(0, recordButton, recordColor);
-launchpadOut.noteOff(0, quantizeButton, quantizeColor)
+launchpadOut.noteOff(0, quantizeButton, quantizeColor);
 lastTap = TempoClock.beats;
 playMetronome = false;
 recordingMetronome = false;
