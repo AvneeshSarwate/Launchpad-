@@ -1,5 +1,5 @@
 (
-var launchpadOut, padTL, padBL, padTR, padBR, colorBL1, colorBR1, colorTL1, colorTR1, colorBL2, colorBR2, colorTL2, colorTR2, colorON, pads, padMap, madePadList, scales, roots, padOn, padOff, setPadLights, transposes, makePadList, indToNote_, indToNote, midiOut, launchPad, tempoClock, interruptLoopButtons, controlChanInd, tapTempoSetButton, tapTempoToggle, recordButton, lastTap, playMetronome, recordingMetronome, metronomeFunc, preRecordCount, preRecordLength, recordBuffer, color1, tlBanks, trBanks, blBanks, brBanks, banks, bankMap, recordingState, bankSet, bankToSaveTo, bankToRecording, recordColor, tempLoopTask, tempLoopString, createRecordedTask, playingBanks, metronomeFlashTask, recordingInterim, resetRecordingState, interruptLooping, controlChanButton, arrowButtons, color2, up, down, left, right, padsByChannel, recordingStartBeat, recordingEndBeat, truncateLoop, quantize, algOrderList, pythonOSCport, algResponseHandler, algButtons, quantizationLevels, algBanks, liveCodeHandler, newKeyButton, masterClockOSCport, masterClockTempoHandler, onDeckBuffers, algChannelsInfo, recieveBuffer, startChannel, stringToBuf, stopChannel, rootScaleHandler, newKeysTransposes, newKeysPadIndToNote, newKeysSetPadLights, playingNewKeys, newKeysChan, hitListToNoteList, noteListToHitList;
+var launchpadOut, padTL, padBL, padTR, padBR, colorBL1, colorBR1, colorTL1, colorTR1, colorBL2, colorBR2, colorTL2, colorTR2, colorON, pads, padMap, madePadList, scales, roots, padOn, padOff, setPadLights, transposes, makePadList, indToNote_, indToNote, midiOut, launchPad, tempoClock, interruptLoopButtons, controlChanInd, tapTempoSetButton, tapTempoToggle, recordButton, lastTap, playMetronome, recordingMetronome, metronomeFunc, preRecordCount, preRecordLength, recordBuffer, color1, tlBanks, trBanks, blBanks, brBanks, banks, bankMap, recordingState, bankSet, bankToSaveTo, bankToRecording, recordColor, tempLoopTask, tempLoopString, createRecordedTask, playingBanks, metronomeFlashTask, recordingInterim, resetRecordingState, interruptLooping, controlChanButton, arrowButtons, color2, up, down, left, right, padsByChannel, recordingStartBeat, recordingEndBeat, truncateLoop, quantize, algOrderList, pythonOSCport, algResponseHandler, algButtons, quantizationLevels, algBanks, liveCodeHandler, newKeyButton, masterClockOSCport, masterClockTempoHandler, onDeckBuffers, algChannelsInfo, recieveBuffer, startChannel, stringToBuf, stopChannel, rootScaleHandler, newKeysTransposes, newKeysPadIndToNote, newKeysSetPadLights, playingNewKeys, newKeysChan, hitListToNoteList, noteListToHitList, quantizeButton, quantizeColor, quantized;
 
 //MIDIClient.init;
 //MIDIIn.connectAll;
@@ -14,11 +14,11 @@ masterClockOSCport = NetAddr("localhost", 57120);
 //OPTIONS
 preRecordLength = 0;
 truncateLoop = true;
-quantizationLevels = [4, 6];
+quantizationLevels = [4, 3];
 
 
-algButtons = [95, 96, 97];
-newKeyButton = 98;
+algButtons = [95, 96];
+
 
 a = [1, 2, 3, 4];
 b = [5, 6, 7, 8];
@@ -107,9 +107,16 @@ indToNote = {|ind, chan| indToNote_.(ind, scales[chan], roots[chan], transposes[
 
 transposes = [-1, 4, -12, 0 ]; //+- 4 corresponds to up/down a row, +-1 corresponds to left/right a column
 
-//---------------
+quantizeButton = 97;
+quantizeColor = 8;
+quantized = false;
+
+//---------------------------------------------------------------------------------------------
+//---------------------------------------------------------------------------------------------
 //newKeyboard stuff
 newKeysTransposes = [-12, -12, -12, -12];  //+- 5 for vertical, +- 1 for horizontal
+
+newKeyButton = 98;
 
 playingNewKeys = false;
 
@@ -144,7 +151,8 @@ newKeysSetPadLights = {|ctrlChanInd|
 		})
 	});
 };
-//---------------
+//---------------------------------------------------------------------------------------------
+//---------------------------------------------------------------------------------------------
 
 //(note%12 - root%12)%12
 
@@ -238,7 +246,6 @@ tempLoopString = nil;
 
 
 //does NOT include timeAfterLastHit
-//time is a timestamp, not a "pre-hit" duration
 //makes assumption that there is always a noteOn before a noteOff
 hitListToNoteList = {|hitList|
 	var notesToStartStop = Dictionary.new();
@@ -256,9 +263,9 @@ hitListToNoteList = {|hitList|
 			{notesToStartStop[hit[1]] = [[timeSoFar,  hit[2], hit[3], hit[4]]].asList},
 			{
 				count = count+1;
-				["pre", notesToStartStop[hit[1]].size].postln;
+				//["pre", notesToStartStop[hit[1]].size].postln;
 				notesToStartStop[hit[1]].add([timeSoFar,  hit[2], hit[3], hit[4]]);
-				["post", notesToStartStop[hit[1]].size].postln;
+				//["post", notesToStartStop[hit[1]].size].postln;
 			}
 	)});
 	"A2".postln;
@@ -308,7 +315,7 @@ quantize = {|oldRecBuf, quantDivArray, startBeat, endBeat|
 	//select div with least error
 	var currentBeat = 0;
 	var listsPerBeat = List.new();
-	var quantizedHits = List.new();
+	var quantizedNotes = List.new();
 	var hangingNotes = Set.new();
 	var recBuf = List.newFrom(oldRecBuf);
 	var newBuf;
@@ -317,7 +324,7 @@ quantize = {|oldRecBuf, quantDivArray, startBeat, endBeat|
 	listsPerBeat.add(List.new());
 
 
-	recBuf.do({|hit| [hit[0], startBeat].postln; if(hit[0] < startBeat, {hit[0] = startBeat}) });
+	recBuf.do({|hit| /*[hit[0], startBeat].postln;*/ if(hit[0] < startBeat, {hit[0] = startBeat}) });
 	recBuf.do({|elem|
 		if(elem[4] == "on",
 			{hangingNotes.add([elem[1], elem[3]])},
@@ -334,10 +341,10 @@ quantize = {|oldRecBuf, quantDivArray, startBeat, endBeat|
 	recBuf[0][0] = recBuf[0][0] - startBeat;
 
 	"PRE NOTES".postln;
-	newBuf = y.(recBuf, startBeat);
-	newBuf.do({|note| note.postln});
+	newBuf = hitListToNoteList.(recBuf, startBeat);
+	//newBuf.do({|note| note.postln});
 	"B".postln;
-	newBuf = z.(newBuf);
+	newBuf = noteListToHitList.(newBuf);
 	if(recBuf == newBuf, {"MATCH".postln}, {
 		"NO MATCH".postln;
 		(0..recBuf.size).do({|ind|
@@ -347,10 +354,11 @@ quantize = {|oldRecBuf, quantDivArray, startBeat, endBeat|
 	"POST NOTES".postln;
 
 	//todo - quantize based on "notes" instead of hits - shift noteOn but keep note duration the same
+	newBuf = hitListToNoteList.(recBuf, startBeat);
 
 	//todo - quant start - can drop in noteList here instead of hit list?
 	"LOG1".postln;
-	recBuf.do({|hit|
+	newBuf.do({|hit|
 		var indexBeat = hit[0].floor;
 		//["HIT", indexBeat, currentBeat, hit].postln;
 		if(indexBeat > currentBeat, {
@@ -378,13 +386,30 @@ quantize = {|oldRecBuf, quantDivArray, startBeat, endBeat|
 			newHit[0] = bestList[0][i];
 			newHit
 		});
-		quantizedHits.add(quantHitList);
+		quantizedNotes.add(quantHitList);
 	});
+	quantizedNotes = quantizedNotes.inject([], _++_);
+	quantizedNotes.do({|note| note.postln});
 	//todo - quant end
 
 	//TODO - something still messed up with long held notes
 	//TOGGLE QUANTIZATION HERE
-	//recBuf = quantizedHits.inject([], _++_);
+	if(quantized, {
+		var loopDur = endBeat - startBeat;
+
+		//modify noteEnds and timeAfterLastBeat s.t. it is still within an integral beat length
+		quantizedNotes.do({|note|
+			if((note[0] + note[4]) > loopDur, {note[4] = loopDur - 0.001})
+		});
+
+		//recalculate timeAfterLastHit
+
+
+		recBuf = noteListToHitList.(quantizedNotes);
+
+
+	});
+
 
 
 	//recBuf.do({|hit| if(true/*hit[4] == "on"*/, {["HIT TIME", hit[4], hit[0]].postln})});
@@ -462,6 +487,7 @@ tapTempoToggle = 6;
 recordButton = 7;
 recordColor = 5;
 launchpadOut.control(0, recordButton, recordColor);
+launchpadOut.noteOff(0, quantizeButton, quantizeColor)
 lastTap = TempoClock.beats;
 playMetronome = false;
 recordingMetronome = false;
@@ -609,6 +635,13 @@ c = {|vel, note, chan, port|
 				newKeysChan = controlChanInd;
 				newKeysSetPadLights.(controlChanInd);
 			}
+		);
+	});
+	if((note == quantizeButton) && (vel == 127), {
+		quantized = quantized.not;
+		if(quantized,
+			{launchpadOut.noteOn(0, quantizeButton, quantizeColor)},
+			{launchpadOut.noteOff(0, quantizeButton, quantizeColor)}
 		);
 	});
 	if(arrowButtons.includes(note) && (vel == 127), {
