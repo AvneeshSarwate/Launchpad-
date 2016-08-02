@@ -1,5 +1,5 @@
 (
-var launchpadOut, padTL, padBL, padTR, padBR, colorBL1, colorBR1, colorTL1, colorTR1, colorBL2, colorBR2, colorTL2, colorTR2, colorON, pads, padMap, madePadList, scales, roots, padOn, padOff, setPadLights, transposes, makePadList, indToNote_, indToNote, midiOut, launchPad, tempoClock, interruptLoopButtons, controlChanInd, tapTempoSetButton, tapTempoToggle, recordButton, lastTap, playMetronome, recordingMetronome, metronomeFunc, preRecordCount, preRecordLength, recordBuffer, color1, tlBanks, trBanks, blBanks, brBanks, banks, bankMap, recordingState, bankSet, bankToSaveTo, bankToRecording, recordColor, tempLoopTask, tempLoopString, createRecordedTask, playingBanks, metronomeFlashTask, recordingInterim, resetRecordingState, interruptLooping, controlChanButton, arrowButtons, color2, up, down, left, right, padsByChannel, recordingStartBeat, recordingEndBeat, truncateLoop, quantize, algOrderList, pythonOSCport, algResponseHandler, algButtons, quantizationLevels, algBanks, liveCodeHandler, newKeyButton, masterClockOSCport, masterClockTempoHandler, onDeckBuffers, algChannelsInfo, recieveBuffer, startChannel, stringToBuf, stopChannel, rootScaleHandler, newKeysTransposes, newKeysPadIndToNote, newKeysSetPadLights, playingNewKeys, newKeysChan, hitListToNoteList, noteListToHitList, quantizeButton, quantizeColor, quantized, controlHandler, masterClockBeatHandler;
+var launchpadOut, padTL, padBL, padTR, padBR, colorBL1, colorBR1, colorTL1, colorTR1, colorBL2, colorBR2, colorTL2, colorTR2, colorON, pads, padMap, madePadList, scales, roots, padOn, padOff, setPadLights, transposes, makePadList, indToNote_, indToNote, midiOut, launchPad, tempoClock, interruptLoopButtons, controlChanInd, tapTempoSetButton, tapTempoToggle, recordButton, lastTap, playMetronome, recordingMetronome, metronomeFunc, preRecordCount, preRecordLength, recordBuffer, color1, tlBanks, trBanks, blBanks, brBanks, banks, bankMap, recordingState, bankSet, bankToSaveTo, bankToRecording, recordColor, tempLoopTask, tempLoopString, createRecordedTask, playingBanks, metronomeFlashTask, recordingInterim, resetRecordingState, interruptLooping, controlChanButton, arrowButtons, color2, up, down, left, right, padsByChannel, recordingStartBeat, recordingEndBeat, truncateLoop, quantize, algOrderList, pythonOSCport, algResponseHandler, algButtons, quantizationLevels, algBanks, liveCodeHandler, newKeyButton, masterClockOSCport, masterClockTempoHandler, onDeckBuffers, algChannelsInfo, recieveBuffer, startChannel, stringToBuf, stopChannel, rootScaleHandler, newKeysTransposes, newKeysPadIndToNote, newKeysSetPadLights, playingNewKeys, newKeysChan, hitListToNoteList, noteListToHitList, quantizeButton, quantizeColor, quantized, controlHandler, masterClockBeatHandler, setBankMelody, receiveScene;
 
 //MIDIClient.init;
 //MIDIIn.connectAll;
@@ -572,7 +572,7 @@ controlHandler = {|vel, note, chan, port|
 					//if the python func crashes, this remains null and can be checked for
 					if(algOrderList.size > 0, {
 						pythonOSCport.sendMsg("/algRequest",  thisBank[1], thisBank[0],
-							roots[thisBank[1]], scales[thisBank[0]].join(","), thisBank[4])
+							roots[thisBank[1]], scales[thisBank[1]].join(","), thisBank[4])
 					});
 
 					tempoClock.sched(tempoClock.timeToNextBeat, {
@@ -682,46 +682,77 @@ controlHandler = {|vel, note, chan, port|
 };
 MIDIFunc.cc(controlHandler, nil, nil, launchPad.uid);
 
-
+//midiNote -> [bankInd, bankChan, isOn, loopTask/nil, loopString, algMelodyTask, algMelodyString]
 setBankMelody = {|button, hitString, startBeat, playing|
-	var hitList, melodyTask, bank, stopFunc, startFunc;
+	var hitList, melodyTask, bank, startFunc;
 	bank = bankMap[button];
 
-	//[bankInd, bankChan, isOn, loopTask/nil, loopString, algMelodyTask, algMelodyString]
+	melodyTask = createRecordedTask.(stringToBuf.(hitString));
+	["CREATED TASK", button].postln;
 
-	//schedule stop and erase
-	stopFunc = {
-		if(bank[3].isNil.not, {
-			bank[3].stop;
-			bank[3].free;
-			bank[3] = nil;
-			bank[4] = nil;
-			bank[2] = false;
-			launchpadOut.noteOff(0, button, color1[bank[2]]);
-		})
-	};
-	tempoClock.sched(tempoClock.timeToNextBeat-0.01, stopFunc);
-
-	//if not empty, schedule start
-	if((hitString != "") && playing, {
-		bank[3] = createRecordedTask.(stringToBuf.(hitString));
-		bank[4] = hitList;
-		startFunc = {
-			bank[4].play;
+	startFunc = {
+		bank[3] = melodyTask;
+		bank[4] = hitString;
+		launchpadOut.noteOn(0, button, color1[bank[1]]);
+		nil;
+		["START FUNC NOW"].postln;
+		if(playing, {
+			bank[3].play;
 			bank[2] = true;
-			launchpadOut.noteOn(0, button, color1[bank[2]]);
+		});
+
+	};
+	tempoClock.sched(tempoClock.timeToNextBeat, startFunc);
+};
+
+//msg = [/address, melody/info-strList, roots, scales]
+receiveScene = {|msg, time, addr, recvPort|
+	//set roots and scales
+	var count = 0;
+
+	roots = msg[2].asString.split($,).collect({|str| str.asInt});
+	scales = msg[3].asString.split($,).collect({|str| str.split($.).collect({|st| st.asInt})});
+
+	//set pad lights
+
+	if(playingNewKeys,
+		{newKeysSetPadLights.(newKeysChan)},
+		{(0..3).do({|ind|setPadLights.(padsByChannel[ind], color1[ind], color2[ind], ind)})}
+	);
+
+	bankMap.keys.do({|button|
+		var bank = bankMap[button];
+		var stopFunc = {
+			//["STOP FUNC NOW", bank[3].isNil].postln;
+			if(bank[3].isNil.not, {
+				bank[3].stop;
+				bank[3].free;
+				bank[3] = nil;
+				bank[4] = nil;
+				bank[2] = false;
+				launchpadOut.noteOff(0, button, color1[bank[1]]);
+			});
+			nil;
 		};
-		tempoClock.sched(tempoClock.timeToNextBeat, startFunc);
+		tempoClock.sched(tempoClock.timeToNextBeat-0.01, stopFunc);
+	});
+
+	//split string and set banks
+	msg[1].asString.split($:).do({|bankStr|
+		if(bankStr != "none",
+			{
+				var split, bankInfo;
+				split = bankStr.split($ );
+				["bankCount", count, split[0]].postln;
+				count = count+1;
+				bankInfo = [split[0].asInt, split[1], split[2].asFloat, (split[3].asInt == 1)];
+				["setBankMelodyArgs", bankInfo[0], bankInfo[2], bankInfo[3], bankInfo[1]].postln;
+				setBankMelody.(bankInfo[0], bankInfo[1], bankInfo[2], bankInfo[3]);
+			}
+		);
 	});
 };
-
-//msg = [melody/info-strList, roots, scales]
-recieveScene = {|msg, time, addr, recvPort|
-	//set roots and scales
-	//set pad lights
-	//split string and set banks
-};
-
+OSCFunc(receiveScene, "/sendScene");
 
 
 
