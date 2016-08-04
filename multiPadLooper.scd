@@ -559,7 +559,7 @@ controlHandler = {|vel, note, chan, port|
 				thisBank[4] = note + tempLoopString + recordingStartBeat;
 
 				pythonOSCport.sendMsg("/saveLoop",  thisBank[1], thisBank[0],
-					roots[thisBank[1]], scales[thisBank[0]].join(","), thisBank[4]);
+					roots[thisBank[1]], scales[thisBank[1]].join(","), thisBank[4]);
 
 				playingBanks.add(note);
 				resetRecordingState.();
@@ -700,8 +700,8 @@ setBankMelody = {|button, hitString, startBeat, playing|
 			bank[3].play;
 			bank[2] = true;
 		});
-
 	};
+	if(playing, {playingBanks.add(button)})
 	tempoClock.sched(tempoClock.timeToNextBeat, startFunc);
 };
 
