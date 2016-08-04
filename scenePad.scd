@@ -16,14 +16,15 @@ mini = MIDIClient.sources.select({|elem| (elem.name == "Launchpad Mini")
 	&& (elem.device == "Launchpad Mini")})[0];
 
 noteToInd = {|x|
-	var row = x / 16;
+	var row = 7 - (x / 16).asInt;
 	var col = x % 16;
 	var retVal = -1;
 	if(col < 8, {retVal = row*10 + col});
+	retVal.postln;
 	retVal
 }; //convert note to pad index
 
-noteToXY = {|x| [noteToInd.(x)%8, floor(noteToInd.(x)/8)]}; //convert note to pad xy (bottom left 0,0)
+
 isPadNote = {|x| noteToInd.(x) != -1};
 record_BUTTON = 8;
 green_LIGHT = 48;
