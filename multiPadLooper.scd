@@ -684,14 +684,15 @@ MIDIFunc.cc(controlHandler, nil, nil, launchPad.uid);
 
 //midiNote -> [bankInd, bankChan, isOn, loopTask/nil, loopString, algMelodyTask, algMelodyString]
 setBankMelody = {|button, hitString, startBeat, playing|
-	var hitList, melodyTask, bank, startFunc;
-	bank = bankMap[button];
+	var hitList, startFunc;
 
-	melodyTask = createRecordedTask.(stringToBuf.(hitString));
+	//todo - enable this to minimize latency?
+	//melodyTask = createRecordedTask.(stringToBuf.(hitString));
 	["CREATED TASK", button].postln;
 
 	startFunc = {
-		bank[3] = melodyTask;
+		var bank = bankMap[button];
+		bank[3] = createRecordedTask.(stringToBuf.(hitString));
 		bank[4] = hitString;
 		launchpadOut.noteOn(0, button, color1[bank[1]]);
 		nil;
@@ -701,7 +702,7 @@ setBankMelody = {|button, hitString, startBeat, playing|
 			bank[2] = true;
 		});
 	};
-	if(playing, {playingBanks.add(button)})
+	if(playing, {playingBanks.add(button)});
 	tempoClock.sched(tempoClock.timeToNextBeat, startFunc);
 };
 
@@ -720,6 +721,7 @@ receiveScene = {|msg, time, addr, recvPort|
 		{(0..3).do({|ind|setPadLights.(padsByChannel[ind], color1[ind], color2[ind], ind)})}
 	);
 
+	playingBanks = List.new();
 	bankMap.keys.do({|button|
 		var bank = bankMap[button];
 		var stopFunc = {

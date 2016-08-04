@@ -33,7 +33,6 @@ amber_LIGHT = 51;
 savedScenes = Dictionary.new();
 recording = false;
 
-miniOut.noteOn(0, metronomeSync_BUTTON, amber_LIGHT);
 miniOut.noteOn(0, record_BUTTON, green_LIGHT);
 (0..63).do({|i| miniOut.noteOn(0, ((i/8).floor * 16) + (i%8), 0)});
 
